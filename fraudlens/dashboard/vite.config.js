@@ -8,5 +8,15 @@ export default defineConfig({
     proxy: {
       '/api': 'http://127.0.0.1:8000'
     }
+  },
+  preview: {
+    port: 4173,
+    proxy: {
+      '/api': 'http://127.0.0.1:8000'
+    }
+  },
+  build: {
+    target: 'es2020',
+    sourcemap: false
   }
 })

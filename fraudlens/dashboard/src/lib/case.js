@@ -1,5 +1,11 @@
 export function getRiskBand(probability) {
+  if (probability === null || probability === undefined || probability === '') {
+    return { key: 'unknown', label: 'Not scored' }
+  }
   const value = Number(probability)
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    return { key: 'unknown', label: 'Not scored' }
+  }
   if (value >= 0.85) return { key: 'critical', label: 'Critical' }
   if (value >= 0.6) return { key: 'high', label: 'High' }
   if (value >= 0.3) return { key: 'elevated', label: 'Elevated' }
@@ -26,7 +32,29 @@ export function getFinalActions(nextBestActions) {
 }
 
 export function getManualActions(nextBestActions) {
-  return getFinalActions(nextBestActions).filter(action => action?.route && action.route !== 'auto')
+  return getFinalActions(nextBestActions).filter(action => {
+    const route = String(action?.route || '').trim().toLowerCase()
+    return route && route !== 'auto'
+  })
+}
+
+export function getApprovalState(answer) {
+  const sources = [
+    [answer?.approval?.status, 'Case response'],
+    [answer?.approval?.decision, 'Case response'],
+    [answer?.approval_state, 'Case response'],
+    [answer?.next_best_actions?.approval_state, 'Action snapshot'],
+  ]
+  const match = sources.find(([candidate]) => (
+    candidate !== null
+    && candidate !== undefined
+    && String(candidate).trim()
+  ))
+  if (!match) return null
+  return {
+    value: String(match[0]).trim(),
+    source: match[1],
+  }
 }
 
 export function actionKey(action) {

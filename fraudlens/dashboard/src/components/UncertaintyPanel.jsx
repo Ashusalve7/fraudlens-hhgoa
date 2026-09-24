@@ -1,13 +1,13 @@
-import { getManualActions } from '../lib/case.js'
+import { getApprovalState, getManualActions } from '../lib/case.js'
 import { formatNumber, formatPercent, titleCaseToken } from '../lib/format.js'
 
 function suppliedEvidenceConfidence(explanation) {
   const value = explanation?.evidence_confidence?.value ?? explanation?.evidence_confidence
   const number = Number(value)
-  if (Number.isFinite(number) && explanation?.evidence_confidence !== null) {
+  if (Number.isFinite(number) && number >= 0 && number <= 1) {
     return {
       value: formatPercent(number),
-      detail: 'Value supplied by the explanation response.',
+      detail: 'Value supplied by the explanation response; calibration was not established.',
     }
   }
   return {
@@ -17,11 +17,13 @@ function suppliedEvidenceConfidence(explanation) {
 }
 
 function suppliedApprovalState(answer) {
-  const value = answer?.approval?.status
-    || answer?.approval_state
-    || answer?.next_best_actions?.approval_state
-  if (!value) return null
-  return titleCaseToken(value)
+  const state = getApprovalState(answer)
+  return state ? titleCaseToken(state.value) : null
+}
+
+function routeClass(route) {
+  const value = String(route || '').trim()
+  return value === 'auto' || value === 'L1' || value === 'L2' ? value : 'unknown'
 }
 
 export default function UncertaintyPanel({ caseRecord, answer, explanationResource }) {
@@ -34,14 +36,14 @@ export default function UncertaintyPanel({ caseRecord, answer, explanationResour
   let readinessDetail = 'The case response does not include a final action route.'
 
   if (manualActions.length > 0) {
-    readinessTitle = approvalState || 'Awaiting approval'
+    readinessTitle = approvalState || 'Approval state unavailable'
     readinessDetail = approvalState
-      ? 'Approval state was supplied by the case response.'
-      : 'A non-auto route is present, but no approval state was returned.'
+      ? 'Approval state was supplied by the recorded case response.'
+      : 'A non-auto route requires human approval, but the API did not supply a decision state.'
   } else if (answer.next_best_actions?.final?.length) {
-    readinessTitle = approvalState || 'Auto-route recorded'
+    readinessTitle = approvalState || 'No human route returned'
     readinessDetail = approvalState
-      ? 'Approval state was supplied by the case response.'
+      ? 'Approval state was supplied by the recorded case response.'
       : 'The recorded final actions are all marked auto; no execution status was returned.'
   }
 
@@ -74,12 +76,18 @@ export default function UncertaintyPanel({ caseRecord, answer, explanationResour
           <div>
             <h3 id="confidence-label">Evidence Confidence</h3>
             <strong>
-              {explanationResource.status === 'loading' ? 'Loading…' : evidenceConfidence.value}
+              {explanationResource.status === 'loading'
+                ? 'Loading…'
+                : explanationResource.status === 'error'
+                  ? 'Unavailable'
+                  : evidenceConfidence.value}
             </strong>
             <p>
               {explanationResource.status === 'loading'
                 ? 'Reading the explanation response…'
-                : evidenceConfidence.detail}
+                : explanationResource.status === 'error'
+                  ? 'The explanation request failed; claim count below comes from the case detail.'
+                  : evidenceConfidence.detail}
             </p>
             <span className="metric-foot">
               {formatNumber(caseRecord.evidence?.length || 0)} recorded claims ·{' '}
@@ -97,7 +105,7 @@ export default function UncertaintyPanel({ caseRecord, answer, explanationResour
             {manualActions.length > 0 ? (
               <div className="route-stack" aria-label="Routes requiring approval">
                 {manualActions.map(action => (
-                  <span className={`route ${action.route}`} key={`${action.action}-${action.route}`}>
+                  <span className={`route ${routeClass(action.route)}`} key={`${action.action}-${action.route}`}>
                     {action.route} · {titleCaseToken(action.action)}
                   </span>
                 ))}

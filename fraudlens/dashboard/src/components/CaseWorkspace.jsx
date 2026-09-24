@@ -121,12 +121,18 @@ export default function CaseWorkspace({ caseId }) {
           <div><dt>Opened</dt><dd>{formatDateTime(answer.opened_at)}</dd></div>
           <div><dt>Flagged transaction</dt><dd translate="no">{answer.flagged_txn_id || caseRecord.first_suspicious_txn_id || 'Not supplied'}</dd></div>
           <div><dt>Case-file graph ref.</dt><dd translate="no">{caseRecord.graph_case_id || 'Not supplied'}</dd></div>
-          <div><dt>Recorded run</dt><dd>{pluralize(answer.tool_calls, 'tool call')} · {formatLatency(answer.latency_s)}</dd></div>
+          <div><dt>Recorded latency</dt><dd>{formatLatency(answer.latency_s)}</dd></div>
         </dl>
       </header>
 
       <div className="workspace-primary">
-        <InvestGraph explanationResource={explanationResource} caseId={caseId} />
+        <InvestGraph
+          explanationResource={explanationResource}
+          caseId={caseId}
+          flaggedTxnId={answer.flagged_txn_id || caseRecord.first_suspicious_txn_id || ''}
+          cardId={answer.card_id || ''}
+          customerId={answer.customer_id || ''}
+        />
         <UncertaintyPanel
           caseRecord={caseRecord}
           answer={answer}
@@ -153,7 +159,7 @@ export default function CaseWorkspace({ caseId }) {
         <SummaryStat
           label="Connected Entities"
           value={formatNumber(connectedCards.length + connectedDevices.length)}
-          detail={`${formatNumber(connectedCards.length)} cards · ${formatNumber(connectedDevices.length)} devices`}
+          detail={`${pluralize(connectedCards.length, 'card')} · ${pluralize(connectedDevices.length, 'device')}`}
         />
       </section>
 
@@ -170,7 +176,7 @@ export default function CaseWorkspace({ caseId }) {
           <strong>{topAction ? titleCaseToken(topAction.action) : 'No final action returned'}</strong>
           <p>{topAction?.reason || 'No rationale was returned for a final action.'}</p>
         </div>
-        <ActionsPanel nba={answer.next_best_actions || {}} />
+        <ActionsPanel nba={answer.next_best_actions || {}} answer={answer} />
       </section>
 
       <div className="evidence-grid">
@@ -194,7 +200,7 @@ export default function CaseWorkspace({ caseId }) {
 
       <div className="supporting-grid">
         <EvidenceRequests requests={answer.evidence_requests} />
-        <CaseTimeline states={answer._states} />
+        <CaseTimeline states={answer._states} openedAt={answer.opened_at} />
       </div>
 
       <SarDraft answer={answer} />

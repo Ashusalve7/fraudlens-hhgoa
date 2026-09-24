@@ -28,21 +28,26 @@ export default function EvidenceRequests({ requests }) {
             that an external request was sent or received.
           </p>
           <ol className="request-list">
-            {items.map((request, index) => (
-              <li key={`${request.type || 'request'}-${index}`}>
-                <div className="request-meta">
-                  <strong>{titleCaseToken(request.type || 'Evidence request')}</strong>
-                  {Number.isFinite(Number(request.asked_after_step)) && (
-                    <span>Inserted after run step {formatNumber(request.asked_after_step)}</span>
-                  )}
-                </div>
-                <span className="assumed-label">Assumed response · Simulated</span>
-                <p>
-                  {request.assumed_response
-                    || 'No assumed response was recorded for this request.'}
-                </p>
-              </li>
-            ))}
+            {items.map((request, index) => {
+              const step = request?.asked_after_step
+              const hasStep = step !== null && step !== undefined && step !== ''
+                && Number.isFinite(Number(step))
+              return (
+                <li key={`${request?.type || 'request'}-${index}`}>
+                  <div className="request-meta">
+                    <strong>{titleCaseToken(request?.type || 'Evidence request')}</strong>
+                    {hasStep && (
+                      <span>Inserted after run step {formatNumber(step)}</span>
+                    )}
+                  </div>
+                  <span className="assumed-label">Assumed response · Simulated</span>
+                  <p>
+                    {request?.assumed_response
+                      || 'No assumed response was recorded for this request.'}
+                  </p>
+                </li>
+              )
+            })}
           </ol>
         </>
       )}

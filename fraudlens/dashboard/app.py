@@ -35,6 +35,7 @@ from typing import Annotated, Any
 from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -99,6 +100,35 @@ VERTEX_TYPES = (
 MIN_GRAPH_WINDOW_DAYS = 1
 MAX_GRAPH_WINDOW_DAYS = 365
 MAX_TXN_ID_LENGTH = 128
+# Graph identifiers are passed to installed-query parameters, not interpolated
+# into GSQL.  Keep them conservative nevertheless: path separators, control
+# characters, and unbounded strings are never useful dashboard identifiers.
+GRAPH_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+MAX_GRAPH_DEVICE_ID_LENGTH = 128
+MAX_RING_CARDS = 100
+MAX_RING_PRIOR_CASES = 100
+MAX_RING_SAMPLE = 8
+
+# These endpoint types are the small, stable dashboard view of the graph.  The
+# edge endpoints are retained for health-count probes; the dashboard itself only
+# needs the names to decide whether the graph is ready.
+CORE_EDGE_SPECS = (
+    ("OWNS_CARD", "Customer", "Card"),
+    ("PAID_WITH", "Transaction", "Card"),
+    ("FROM_DEVICE", "Transaction", "DeviceProfile"),
+    ("P_EMAIL", "Transaction", "EmailDomain"),
+    ("R_EMAIL", "Transaction", "EmailDomain"),
+    ("BILLED_IN", "Transaction", "BillingRegion"),
+    ("NEXT_TXN", "Transaction", "Transaction"),
+    ("CASE_TXN", "ClosedCase", "Transaction"),
+    ("CASE_CARD", "ClosedCase", "Card"),
+    ("CASE_CONN_CARD", "ClosedCase", "Card"),
+    ("CASE_DEVICE", "ClosedCase", "DeviceProfile"),
+    ("AG_TXN", "AgentCase", "Transaction"),
+    ("AG_CARD", "AgentCase", "Card"),
+    ("AG_DEVICE", "AgentCase", "DeviceProfile"),
+    ("AG_SIMILAR", "AgentCase", "ClosedCase"),
+)
 
 FEATURE_LABELS = {
     "flagged_amount": "Flagged transaction amount",
@@ -150,11 +180,54 @@ def _cache_version() -> str:
         "DASHBOARD_CACHE_VERSION",
         "API_CACHE_VERSION",
         "CACHE_VERSION",
+        "FRAUDLENS_CACHE_FINGERPRINT",
+        "DASHBOARD_CACHE_FINGERPRINT",
     ):
         value = os.getenv(name)
         if value is not None and str(value).strip():
             return str(value).strip()[:128]
     return CACHE_VERSION
+
+
+def _graph_cache_fingerprint(conn: Any | None = None) -> str:
+    """Return a stable cache component for the graph snapshot.
+
+    Deployments can publish a graph revision explicitly.  Without one, the
+    connection identity is the safest local invalidation signal available to a
+    read-only process; it avoids reusing counts after the adapter is replaced.
+    """
+    for name in (
+        "FRAUDLENS_GRAPH_FINGERPRINT",
+        "DASHBOARD_GRAPH_FINGERPRINT",
+        "TG_GRAPH_FINGERPRINT",
+        "TG_GRAPH_REVISION",
+        "TG_GRAPH_VERSION",
+        "TG_GRAPH_SCHEMA_VERSION",
+        "GRAPH_FINGERPRINT",
+    ):
+        value = os.getenv(name)
+        if value is not None and str(value).strip():
+            declared = str(value).strip()[:256]
+            return f"declared:{declared}:connection:{id(conn) if conn is not None else 'none'}"
+    if conn is None:
+        return "no-connection"
+    return f"connection:{id(conn)}"
+
+
+def _evidence_cache_fingerprint() -> str:
+    """Fingerprint the adapter/connection used by graph-backed explanations."""
+    # Read the process singleton directly: cache-key calculation must not cause
+    # a lazy graph connection or an extra provider call.
+    evidence = _ev
+    resolver_fingerprint = id(ev)
+    if evidence is None:
+        return f"adapter:uninitialized:resolver:{resolver_fingerprint}"
+    try:
+        conn = getattr(evidence, "conn", None)
+    except Exception as exc:
+        _log_graph_failure("cache", exc)
+        return "adapter:unavailable"
+    return f"{_graph_cache_fingerprint(conn)}:adapter:{id(evidence)}:resolver:{resolver_fingerprint}"
 
 
 GRAPH_STATS_CACHE_TTL = _env_float(
@@ -234,6 +307,15 @@ _ev_lock = RLock()
 _ev: Evidence | None = None
 
 
+def clear_dashboard_caches() -> None:
+    """Clear all process-local dashboard caches and per-key build locks."""
+    _graph_stats_cache.clear()
+    _explain_cache.clear()
+    _case_pack_cache.clear()
+    with _explain_locks_guard:
+        _explain_locks.clear()
+
+
 class CaseSummary(BaseModel):
     case_id: str
     verdict: str
@@ -294,6 +376,13 @@ class GraphHealth(BaseModel):
     name: str
     connected: bool
     core_edges: CoreEdgeHealth
+    # Counts are deliberately optional so older graph clients and lightweight
+    # test doubles can still use the health endpoint.  When the provider exposes
+    # count methods, every expected type is present with an integer or ``None``.
+    counts: dict[str, int | None] = Field(default_factory=dict)
+    edge_counts: dict[str, int | None] = Field(default_factory=dict)
+    counts_checked: bool = False
+    edge_counts_checked: bool = False
 
 
 class HealthResponse(BaseModel):
@@ -302,8 +391,12 @@ class HealthResponse(BaseModel):
     service: str
     graph: GraphHealth
     # Keep the explicit expectation visible at the top level for probes that
-    # do not want to know the nested response shape.
+    # do not want to know the nested response shape.  The flat aliases preserve
+    # compatibility with early dashboard health probes while the nested graph
+    # object remains the canonical shape.
     core_edge_expectations: list[str]
+    counts: dict[str, int | None] = Field(default_factory=dict)
+    edge_counts: dict[str, int | None] = Field(default_factory=dict)
 
 
 app = FastAPI(
@@ -317,6 +410,17 @@ app = FastAPI(
 app.mount("/assets", StaticFiles(directory=str(DIST_ASSETS), check_dir=False), name="assets")
 
 
+def _decoded_path(path: str) -> str:
+    """Decode a bounded number of proxy/framework encoding layers for policy checks."""
+    decoded = str(path)
+    for _ in range(3):
+        next_value = unquote(decoded)
+        if next_value == decoded:
+            break
+        decoded = next_value
+    return decoded
+
+
 @app.middleware("http")
 async def dashboard_security_headers(request: Request, call_next):
     """Apply lightweight browser headers and optional non-loopback API auth.
@@ -326,10 +430,19 @@ async def dashboard_security_headers(request: Request, call_next):
     must present it in a standard API-token header or as a Bearer token.  Proxy
     forwarding headers are intentionally not trusted by default.
     """
-    path = unquote(request.url.path)
+    path = _decoded_path(request.url.path)
+    if path.startswith("//"):
+        path = "/" + path.lstrip("/")
     if path == "/api" or path.startswith("/api/"):
         expected = _configured_api_token()
-        if expected and not _is_loopback_client(request) and not _has_valid_token(request, expected):
+        try:
+            local_client = _is_loopback_client(request)
+            valid_token = _has_valid_token(request, expected) if expected else False
+        except Exception:
+            # Authentication fails closed if the ASGI scope is malformed.
+            local_client = False
+            valid_token = False
+        if expected and not local_client and not valid_token:
             response = JSONResponse(
                 status_code=401,
                 content={"detail": "authentication required"},
@@ -343,11 +456,30 @@ async def dashboard_security_headers(request: Request, call_next):
     return response
 
 
+@app.exception_handler(RequestValidationError)
+async def invalid_dashboard_request(request: Request, exc: RequestValidationError):
+    """Return a stable validation error without echoing arbitrary input values."""
+    response = JSONResponse(status_code=422, content={"detail": "invalid request parameters"})
+    _set_response_headers(response, _decoded_path(request.url.path))
+    return response
+
+
+@app.exception_handler(ResponseValidationError)
+async def invalid_dashboard_response(request: Request, exc: ResponseValidationError):
+    """Do not expose response-model or provider details if data is malformed."""
+    logger.error("Dashboard response validation failed (%s)", type(exc).__name__)
+    response = JSONResponse(status_code=500, content={"detail": "internal server error"})
+    _set_response_headers(response, _decoded_path(request.url.path))
+    return response
+
+
 @app.exception_handler(Exception)
 async def unhandled_dashboard_error(request: Request, exc: Exception):
     """Never serialize an unexpected backend exception to a client."""
     logger.error("Unhandled dashboard error (%s)", type(exc).__name__)
-    return JSONResponse(status_code=500, content={"detail": "internal server error"})
+    response = JSONResponse(status_code=500, content={"detail": "internal server error"})
+    _set_response_headers(response, _decoded_path(request.url.path))
+    return response
 
 
 def _set_response_headers(response, path: str) -> None:
@@ -378,11 +510,15 @@ def _configured_api_token() -> str | None:
 
 
 def _is_loopback_client(request: Request) -> bool:
-    client = request.client
-    host = client.host if client is not None else ""
-    if not host:
+    try:
+        client = request.client
+        host = client.host if client is not None else ""
+    except Exception:
+        # A malformed ASGI client scope is not evidence that the caller is local.
         return False
-    host = str(host).strip().strip("[]")
+    if not isinstance(host, str) or not host.strip():
+        return False
+    host = host.strip().strip("[]")
     if host.lower() == "localhost":
         return True
     try:
@@ -391,25 +527,28 @@ def _is_loopback_client(request: Request) -> bool:
             return True
         mapped = getattr(address, "ipv4_mapped", None)
         return bool(mapped is not None and mapped.is_loopback)
-    except ValueError:
+    except (TypeError, ValueError):
         return False
 
 
 def _has_valid_token(request: Request, expected: str) -> bool:
-    supplied = (
-        request.headers.get("X-API-Key")
-        or request.headers.get("X-API-Token")
-        or request.headers.get("X-Access-Token")
-        or request.headers.get("X-FraudLens-Token")
-    )
-    if not supplied:
-        authorization = request.headers.get("Authorization", "")
-        scheme, _, value = authorization.partition(" ")
-        if scheme.lower() == "bearer":
-            supplied = value.strip()
-    if not supplied:
+    candidates = [
+        request.headers.get("X-API-Key"),
+        request.headers.get("X-API-Token"),
+        request.headers.get("X-Access-Token"),
+        request.headers.get("X-FraudLens-Token"),
+    ]
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, value = authorization.partition(" ")
+    if scheme.lower() in {"bearer", "token"} and value.strip():
+        candidates.append(value.strip())
+    try:
+        return any(
+            candidate is not None and hmac.compare_digest(str(candidate), str(expected))
+            for candidate in candidates
+        )
+    except (TypeError, ValueError):
         return False
-    return hmac.compare_digest(str(supplied), str(expected))
 
 
 def _graph_name() -> str:
@@ -427,34 +566,65 @@ def ev() -> Evidence:
     return _ev
 
 
-def _safe_case_path(case_id: str) -> Path:
-    """Validate a case ID and resolve it beneath the configured cases directory."""
+def _connection_for(evidence: Any) -> Any:
+    """Return a live graph connection, initializing the lazy adapter if needed."""
+    conn = getattr(evidence, "conn", None)
+    if conn is not None:
+        return conn
+    ensure_conn = getattr(evidence, "_ensure_conn", None)
+    if callable(ensure_conn):
+        conn = ensure_conn()
+    if conn is None:
+        raise RuntimeError("graph connection is not configured")
+    return conn
+
+
+def _validate_case_id(case_id: Any) -> str:
+    """Accept only the public, three-digit case identifier format."""
     if not isinstance(case_id, str) or CASE_ID_RE.fullmatch(case_id) is None:
         raise HTTPException(status_code=404, detail="case not found")
+    return case_id
 
-    root = CASES_DIR.resolve()
-    candidate = (root / f"{case_id}.json").resolve()
+
+def _safe_case_path(case_id: str) -> Path:
+    """Validate a case ID and resolve it beneath the configured cases directory."""
+    validated = _validate_case_id(case_id)
     try:
+        root = CASES_DIR.resolve()
+        candidate = (root / f"{validated}.json").resolve()
         candidate.relative_to(root)
-    except ValueError:
+    except (OSError, RuntimeError, ValueError):
         # This also catches a symlink whose resolved target leaves CASES_DIR.
         raise HTTPException(status_code=404, detail="case not found") from None
     return candidate
 
 
 def _read_case(case_id: str, path: Path | None = None) -> dict[str, Any]:
-    case_path = path or _safe_case_path(case_id)
+    validated = _validate_case_id(case_id)
+    if path is None:
+        case_path = _safe_case_path(validated)
+    else:
+        # ``path`` is an internal/testing seam, not an authority to bypass the
+        # cases-directory boundary.  This prevents a future caller from turning
+        # the optional argument into a second traversal primitive.
+        try:
+            root = CASES_DIR.resolve()
+            case_path = path.resolve()
+            case_path.relative_to(root)
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError):
+            raise HTTPException(status_code=404, detail="case not found") from None
+
     try:
         with case_path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="case not found") from None
     except (OSError, UnicodeError, json.JSONDecodeError):
-        logger.error("Case data could not be read (%s)", case_id)
+        logger.error("Case data could not be read (%s)", validated)
         raise HTTPException(status_code=500, detail="case data unavailable") from None
 
-    if not isinstance(data, dict) or data.get("case_id") != case_id:
-        logger.error("Case data failed identity validation (%s)", case_id)
+    if not isinstance(data, dict) or data.get("case_id") != validated:
+        logger.error("Case data failed identity validation (%s)", validated)
         raise HTTPException(status_code=500, detail="case data unavailable")
     return data
 
@@ -531,7 +701,8 @@ def cases() -> list[dict[str, Any]]:
             if not path.is_file():
                 continue
             data = _read_case(file_path.stem, path)
-            summaries.append(_case_summary(data))
+            summary = _case_summary(data)
+            summaries.append(CaseSummary.model_validate(summary).model_dump())
         except HTTPException:
             # A malformed or escaping file must not make the queue disclose it
             # or prevent other valid cases from being shown.
@@ -569,11 +740,18 @@ def case_detail(case_id: str) -> dict[str, Any]:
 
 
 def _spa_response() -> FileResponse:
-    if not DIST_INDEX.is_file():
+    try:
+        dist_root = DIST_DIR.resolve()
+        index_path = DIST_INDEX.resolve()
+        index_path.relative_to(dist_root)
+    except (OSError, RuntimeError, ValueError):
+        logger.error("Dashboard production build is unavailable")
+        raise HTTPException(status_code=503, detail="dashboard build unavailable") from None
+    if not index_path.is_file():
         logger.error("Dashboard production build is unavailable")
         raise HTTPException(status_code=503, detail="dashboard build unavailable")
     return FileResponse(
-        DIST_INDEX,
+        index_path,
         media_type="text/html",
         headers={"Cache-Control": "no-cache"},
     )
@@ -591,12 +769,15 @@ def graph_stats() -> GraphStatsResponse | JSONResponse:
     try:
         # Resolve the shared connection before looking up the cache so a
         # replaced/test connection cannot receive another connection's counts.
-        conn = ev().conn
+        conn = _connection_for(ev())
     except Exception as exc:
         _log_graph_failure("connect", exc)
         return _graph_unavailable_response(graph)
+    if conn is None:
+        _log_graph_failure("connect", RuntimeError("graph connection is not configured"))
+        return _graph_unavailable_response(graph)
 
-    key = ("graph-stats", _cache_version(), graph, id(conn))
+    key = ("graph-stats", _cache_version(), graph, _graph_cache_fingerprint(conn))
     with _stats_lock:
         cached = _graph_stats_cache.get(key)
         if cached is not None:
@@ -606,12 +787,7 @@ def graph_stats() -> GraphStatsResponse | JSONResponse:
         failures = 0
 
         def count_one(vertex_type: str) -> tuple[str, int | None]:
-            try:
-                value = conn.getVertexCount(vertex_type)
-                return vertex_type, _coerce_count(value)
-            except Exception as exc:  # workspace asleep, permissions, or network failure
-                _log_graph_failure("count", exc)
-                return vertex_type, None
+            return vertex_type, _probe_vertex_count(conn, vertex_type)
 
         # Counts do not depend on one another; use a small fixed-size pool rather
         # than serializing the round trips.
@@ -653,7 +829,10 @@ def _coerce_count(value: Any) -> int:
             raise ValueError("invalid count")
         return int(value)
     if isinstance(value, str):
-        parsed = int(value.strip())
+        text = value.strip()
+        if not text:
+            raise ValueError("invalid count")
+        parsed = int(text)
         if parsed < 0:
             raise ValueError("invalid count")
         return parsed
@@ -661,7 +840,63 @@ def _coerce_count(value: Any) -> int:
         for key in ("count", "COUNT", "value"):
             if key in value:
                 return _coerce_count(value[key])
+        # TigerGraph versions have returned both a one-item edge map and a
+        # fully-qualified edge key.  Accept only an unambiguous one-item map.
+        if len(value) == 1:
+            return _coerce_count(next(iter(value.values())))
     raise ValueError("invalid count")
+
+
+def _probe_vertex_count(conn: Any, vertex_type: str) -> int | None:
+    """Read one vertex count across supported pyTigerGraph signatures."""
+    try:
+        getter = getattr(conn, "getVertexCount", None)
+    except Exception as exc:
+        _log_graph_failure("vertex count capability", exc)
+        return None
+    if not callable(getter):
+        return None
+    last_error: Exception | None = None
+    for args in ((vertex_type,), (vertex_type, True)):
+        try:
+            return _coerce_count(getter(*args))
+        except TypeError as exc:
+            last_error = exc
+        except (ValueError, OverflowError) as exc:
+            last_error = exc
+            break
+        except Exception as exc:  # workspace asleep, permissions, or network failure
+            last_error = exc
+            break
+    if last_error is not None:
+        _log_graph_failure("vertex count", last_error)
+    return None
+
+
+def _probe_edge_count(conn: Any, edge_type: str, from_type: str, to_type: str) -> int | None:
+    """Read one edge count without assuming a single client signature."""
+    try:
+        getter = getattr(conn, "getEdgeCount", None)
+    except Exception as exc:
+        _log_graph_failure("edge count capability", exc)
+        return None
+    if not callable(getter):
+        return None
+    last_error: Exception | None = None
+    for args in ((edge_type, from_type, to_type), (edge_type,)):
+        try:
+            return _coerce_count(getter(*args))
+        except TypeError as exc:
+            last_error = exc
+        except (ValueError, OverflowError) as exc:
+            last_error = exc
+            break
+        except Exception as exc:  # workspace asleep, permissions, or network failure
+            last_error = exc
+            break
+    if last_error is not None:
+        _log_graph_failure("edge count", last_error)
+    return None
 
 
 def _log_graph_failure(operation: str, exc: Exception) -> None:
@@ -692,17 +927,25 @@ def _parse_graph_datetime(value: Any) -> datetime:
 
 
 def _validate_window_days(value: int) -> int:
+    if isinstance(value, bool):
+        raise HTTPException(status_code=422, detail="window_days is out of range")
+    if isinstance(value, float) and (not math.isfinite(value) or not value.is_integer()):
+        raise HTTPException(status_code=422, detail="window_days is out of range")
     try:
         window_days = int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise HTTPException(status_code=422, detail="window_days is out of range") from None
-    if isinstance(value, bool) or not (MIN_GRAPH_WINDOW_DAYS <= window_days <= MAX_GRAPH_WINDOW_DAYS):
+    if not (MIN_GRAPH_WINDOW_DAYS <= window_days <= MAX_GRAPH_WINDOW_DAYS):
         raise HTTPException(status_code=422, detail="window_days is out of range")
     return window_days
 
 
 def _validate_txn_id(txn_id: str) -> str:
-    if not isinstance(txn_id, str) or not txn_id or len(txn_id) > MAX_TXN_ID_LENGTH or "\x00" in txn_id:
+    if (
+        not isinstance(txn_id, str)
+        or len(txn_id) > MAX_TXN_ID_LENGTH
+        or GRAPH_ID_RE.fullmatch(txn_id) is None
+    ):
         raise HTTPException(status_code=404, detail="txn or device not found")
     return txn_id
 
@@ -725,7 +968,17 @@ def graph_ring(
         context = evidence.txn_context(txn_id)
         txn = (context or {}).get("txn") if isinstance(context, dict) else None
         device = (context or {}).get("device") if isinstance(context, dict) else None
-        if not isinstance(txn, dict) or not isinstance(device, dict) or not device:
+        device_id = device.get("device_id") if isinstance(device, dict) else None
+        if isinstance(device_id, int) and not isinstance(device_id, bool):
+            device_id = str(device_id)
+        if (
+            not isinstance(txn, dict)
+            or not isinstance(device, dict)
+            or not device
+            or not isinstance(device_id, str)
+            or len(device_id) > MAX_GRAPH_DEVICE_ID_LENGTH
+            or GRAPH_ID_RE.fullmatch(device_id) is None
+        ):
             # A missing entity is a normal 404.  Keep it distinct from provider
             # failures, which are handled by the generic exception path below.
             context = None
@@ -733,7 +986,7 @@ def graph_ring(
             t0 = _parse_graph_datetime(txn.get("ts"))
             start = (t0 - timedelta(days=window_days)).strftime("%Y-%m-%d %H:%M:%S")
             end = (t0 + timedelta(days=window_days)).strftime("%Y-%m-%d %H:%M:%S")
-            neighborhood = evidence.device_neighborhood(device["device_id"], start, end)
+            neighborhood = evidence.device_neighborhood(device_id, start, end)
     except Exception as exc:
         _log_graph_failure("traversal", exc)
         return _graph_unavailable_response(_graph_name())
@@ -744,15 +997,22 @@ def graph_ring(
         _log_graph_failure("traversal", TypeError("invalid result"))
         return _graph_unavailable_response(_graph_name())
 
+    raw_cards = neighborhood.get("cards") or []
+    raw_txns = neighborhood.get("txns") or []
+    raw_prior_cases = neighborhood.get("prior_cases") or []
+    if not all(isinstance(rows, (list, tuple)) for rows in (raw_cards, raw_txns, raw_prior_cases)):
+        _log_graph_failure("traversal", TypeError("invalid result"))
+        return _graph_unavailable_response(_graph_name())
+
     cards = [
-        str(row.get("card_id"))
-        for row in (neighborhood.get("cards") or [])
+        str(row.get("card_id"))[:MAX_GRAPH_DEVICE_ID_LENGTH]
+        for row in list(raw_cards)[:MAX_RING_CARDS]
         if isinstance(row, dict) and row.get("card_id") is not None
     ]
-    txns = [row for row in (neighborhood.get("txns") or []) if isinstance(row, dict)]
+    txns = [row for row in list(raw_txns) if isinstance(row, dict)]
     prior_cases = [
-        str(row.get("case_id"))
-        for row in (neighborhood.get("prior_cases") or [])
+        str(row.get("case_id"))[:MAX_GRAPH_DEVICE_ID_LENGTH]
+        for row in list(raw_prior_cases)[:MAX_RING_PRIOR_CASES]
         if isinstance(row, dict) and row.get("case_id") is not None
     ]
     sample = [
@@ -763,7 +1023,7 @@ def graph_ring(
             "id_15": row.get("id_15"),
             "id_23": row.get("id_23"),
         }
-        for row in txns[:8]
+        for row in txns[:MAX_RING_SAMPLE]
     ]
     return GraphRingResponse(
         txn_id=txn_id,
@@ -931,6 +1191,7 @@ def explain(case_id: str) -> ExplanationResponse | JSONResponse:
         case_id,
         _cache_version(),
         _graph_name(),
+        _evidence_cache_fingerprint(),
         _file_fingerprint(case_path),
         _file_fingerprint(CASE_PACK_PATH),
         _file_fingerprint(MODEL_PATH),
@@ -970,6 +1231,8 @@ def _edge_names(value: Any) -> set[str]:
                 return _edge_names(value[key])
         names: set[str] = set()
         for key, item in value.items():
+            if key in CORE_EDGE_TYPES:
+                names.add(key)
             if isinstance(key, str) and isinstance(item, (dict, list, str)):
                 names.update(_edge_names(item))
         return names
@@ -993,8 +1256,18 @@ def _read_edge_expectations(conn: Any) -> tuple[set[str] | None, bool]:
     capability; an exception from a present method means the graph could not be
     inspected and should be reported as unavailable.
     """
-    getter = getattr(conn, "getEdgeTypes", None)
+    if conn is None:
+        return None, True
+    try:
+        getter = getattr(conn, "getEdgeTypes", None)
+    except Exception as exc:
+        _log_graph_failure("schema", exc)
+        return None, True
     if not callable(getter):
+        # A few client versions expose the already-materialized list as a
+        # property rather than a method.  It is safe to inspect that value.
+        if getter is not None:
+            return _edge_names(getter), False
         return None, False
     try:
         try:
@@ -1006,11 +1279,41 @@ def _read_edge_expectations(conn: Any) -> tuple[set[str] | None, bool]:
         return None, True
 
 
+def _empty_counts(keys: tuple[str, ...] | list[str]) -> dict[str, int | None]:
+    return {key: None for key in keys}
+
+
+def _health_counts(conn: Any) -> tuple[dict[str, int | None], dict[str, int | None], bool, bool]:
+    """Probe bounded vertex/edge counts without making health depend on one API."""
+    try:
+        vertex_getter = getattr(conn, "getVertexCount", None)
+        edge_getter = getattr(conn, "getEdgeCount", None)
+    except Exception as exc:
+        _log_graph_failure("health capability", exc)
+        return _empty_counts(VERTEX_TYPES), _empty_counts(CORE_EDGE_TYPES), False, False
+    vertices_checked = callable(vertex_getter)
+    edges_checked = callable(edge_getter)
+    vertex_counts = _empty_counts(VERTEX_TYPES)
+    edge_counts = _empty_counts(CORE_EDGE_TYPES)
+
+    if vertices_checked:
+        for vertex_type in VERTEX_TYPES:
+            vertex_counts[vertex_type] = _probe_vertex_count(conn, vertex_type)
+    if edges_checked:
+        specs = {edge_type: (from_type, to_type) for edge_type, from_type, to_type in CORE_EDGE_SPECS}
+        for edge_type in CORE_EDGE_TYPES:
+            from_type, to_type = specs.get(edge_type, ("", ""))
+            edge_counts[edge_type] = _probe_edge_count(conn, edge_type, from_type, to_type)
+    return vertex_counts, edge_counts, vertices_checked, edges_checked
+
+
 def _health_payload() -> HealthResponse:
     graph = _graph_name()
     expected = list(CORE_EDGE_TYPES)
+    empty_vertices = _empty_counts(VERTEX_TYPES)
+    empty_edges = _empty_counts(expected)
     try:
-        conn = ev().conn
+        conn = _connection_for(ev())
     except Exception as exc:
         _log_graph_failure("health", exc)
         return HealthResponse(
@@ -1021,41 +1324,89 @@ def _health_payload() -> HealthResponse:
                 name=graph,
                 connected=False,
                 core_edges=CoreEdgeHealth(expected=expected, present=[], missing=expected, checked=False),
+                counts=empty_vertices,
+                edge_counts=empty_edges,
             ),
             core_edge_expectations=expected,
+            counts=empty_vertices,
+            edge_counts=empty_edges,
         )
 
-    present_set, schema_probe_failed = _read_edge_expectations(conn)
-    if present_set is None:
+    if conn is None:
+        _log_graph_failure("health", RuntimeError("graph connection is not configured"))
         return HealthResponse(
-            status="unavailable" if schema_probe_failed else "degraded",
+            status="unavailable",
             ready=False,
             service="fraudlens-dashboard",
             graph=GraphHealth(
                 name=graph,
-                connected=not schema_probe_failed,
-                core_edges=CoreEdgeHealth(
-                    expected=expected,
-                    present=[],
-                    missing=expected if schema_probe_failed else [],
-                    checked=False,
-                ),
+                connected=False,
+                core_edges=CoreEdgeHealth(expected=expected, present=[], missing=expected, checked=False),
+                counts=empty_vertices,
+                edge_counts=empty_edges,
             ),
             core_edge_expectations=expected,
+            counts=empty_vertices,
+            edge_counts=empty_edges,
         )
 
-    present = sorted(present_set.intersection(expected))
-    missing = [edge for edge in expected if edge not in present_set]
+    present_set, schema_probe_failed = _read_edge_expectations(conn)
+    if schema_probe_failed:
+        return HealthResponse(
+            status="unavailable",
+            ready=False,
+            service="fraudlens-dashboard",
+            graph=GraphHealth(
+                name=graph,
+                connected=False,
+                core_edges=CoreEdgeHealth(expected=expected, present=[], missing=expected, checked=False),
+                counts=empty_vertices,
+                edge_counts=empty_edges,
+            ),
+            core_edge_expectations=expected,
+            counts=empty_vertices,
+            edge_counts=empty_edges,
+        )
+
+    vertex_counts, edge_counts, vertices_checked, edges_checked = _health_counts(conn)
+    count_failure = (vertices_checked and any(value is None for value in vertex_counts.values())) or (
+        edges_checked and any(value is None for value in edge_counts.values())
+    )
+    all_counts_failed = (vertices_checked and all(value is None for value in vertex_counts.values())) or (
+        edges_checked and all(value is None for value in edge_counts.values())
+    )
+    if present_set is None:
+        present: list[str] = []
+        missing: list[str] = []
+        status = "unavailable" if all_counts_failed else "degraded"
+        ready = False
+        checked = False
+    else:
+        present = sorted(present_set.intersection(expected))
+        missing = [edge for edge in expected if edge not in present_set]
+        checked = True
+        if all_counts_failed:
+            status = "unavailable"
+        else:
+            status = "ok" if not missing and not count_failure else "degraded"
+        ready = not missing and not count_failure
+
     return HealthResponse(
-        status="ok" if not missing else "degraded",
-        ready=not missing,
+        status=status,
+        ready=ready,
         service="fraudlens-dashboard",
         graph=GraphHealth(
             name=graph,
-            connected=True,
-            core_edges=CoreEdgeHealth(expected=expected, present=present, missing=missing, checked=True),
+            connected=not all_counts_failed,
+            core_edges=CoreEdgeHealth(expected=expected, present=present, missing=missing, checked=checked),
+            counts=vertex_counts,
+            edge_counts=edge_counts,
+            counts_checked=vertices_checked,
+            edge_counts_checked=edges_checked,
         ),
         core_edge_expectations=expected,
+        counts=vertex_counts,
+        edge_counts=edge_counts,
     )
 
 
@@ -1087,7 +1438,7 @@ def api_health() -> HealthResponse:
     include_in_schema=False,
 )
 def spa_history_fallback(full_path: str) -> FileResponse:
-    decoded_path = unquote(full_path).lstrip("/")
+    decoded_path = _decoded_path(full_path).lstrip("/")
     if decoded_path == "api" or decoded_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="not found")
     return _spa_response()

@@ -23,6 +23,7 @@ htmlcov/
 # Frontend
 node_modules/
 .vite/
+.playwright-cli/
 
 # OS/editor
 .DS_Store

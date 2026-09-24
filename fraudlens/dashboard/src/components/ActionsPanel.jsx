@@ -1,10 +1,15 @@
-import { actionKey, getManualActions } from '../lib/case.js'
+import { actionKey, getApprovalState, getManualActions } from '../lib/case.js'
 import { titleCaseToken } from '../lib/format.js'
 
 function routeLabel(route) {
   if (route === 'auto') return 'Auto'
   if (route === 'L1' || route === 'L2') return `${route} Approval`
   return titleCaseToken(route || 'Route not supplied')
+}
+
+function routeClass(route) {
+  const value = String(route || '').trim()
+  return value === 'auto' || value === 'L1' || value === 'L2' ? value : 'unknown'
 }
 
 function ActionList({ actions, emptyLabel }) {
@@ -19,7 +24,7 @@ function ActionList({ actions, emptyLabel }) {
         <li key={`${action.action}-${action.route}-${index}`}>
           <div className="action-top">
             <span className="action-name">{titleCaseToken(action.action)}</span>
-            <span className={`route ${action.route || 'unknown'}`}>
+            <span className={`route ${routeClass(action.route)}`}>
               {routeLabel(action.route)}
             </span>
           </div>
@@ -30,7 +35,7 @@ function ActionList({ actions, emptyLabel }) {
   )
 }
 
-export default function ActionsPanel({ nba }) {
+export default function ActionsPanel({ nba, answer }) {
   const initial = Array.isArray(nba?.initial) ? nba.initial : []
   const final = Array.isArray(nba?.final) ? nba.final : []
   const initialKeys = new Set(initial.map(actionKey))
@@ -39,10 +44,12 @@ export default function ActionsPanel({ nba }) {
   const added = final.filter(action => !initialKeys.has(actionKey(action)))
   const unchangedCount = [...finalKeys].filter(key => initialKeys.has(key)).length
   const hasDelta = removed.length > 0 || added.length > 0
-  const recordedChange = nba?.what_changed && nba.what_changed !== 'nothing'
-    ? nba.what_changed
+  const recordedChange = nba?.what_changed
+    && String(nba.what_changed).trim().toLowerCase() !== 'nothing'
+    ? String(nba.what_changed)
     : null
   const manualActions = getManualActions(nba)
+  const approvalState = getApprovalState(answer)
 
   return (
     <div className="actions-module">
@@ -81,7 +88,9 @@ export default function ActionsPanel({ nba }) {
               {removed.length > 0 ? (
                 <ul>
                   {removed.map(action => (
-                    <li key={`removed-${actionKey(action)}`}>{titleCaseToken(action.action)}</li>
+                    <li key={`removed-${actionKey(action)}`}>
+                      {titleCaseToken(action.action)} · {routeLabel(action.route)}
+                    </li>
                   ))}
                 </ul>
               ) : <p>None</p>}
@@ -91,7 +100,9 @@ export default function ActionsPanel({ nba }) {
               {added.length > 0 ? (
                 <ul>
                   {added.map(action => (
-                    <li key={`added-${actionKey(action)}`}>{titleCaseToken(action.action)}</li>
+                    <li key={`added-${actionKey(action)}`}>
+                      {titleCaseToken(action.action)} · {routeLabel(action.route)}
+                    </li>
                   ))}
                 </ul>
               ) : <p>None</p>}
@@ -112,26 +123,36 @@ export default function ActionsPanel({ nba }) {
             </>
           )}
         </p>
+        {recordedChange && !hasDelta && (
+          <p className="delta-warning" role="note">
+            The narrative mentions change, but the recorded action and route lists are identical.
+            Treat the narrative as unverified until the backend supplies a matching transition.
+          </p>
+        )}
       </section>
 
       {manualActions.length > 0 && (
-        <div className="approval-gate" role="status">
+        <section className="approval-gate" aria-label="Human approval gate">
           <div>
-            <strong>Approval state: awaiting analyst decision</strong>
+            <strong>
+              Approval state:{' '}
+              {approvalState ? titleCaseToken(approvalState.value) : 'not supplied'}
+            </strong>
             <p>
               {manualActions.length} non-auto{' '}
-              {manualActions.length === 1 ? 'route requires' : 'routes require'} approval. The API did
-              not return an approval decision, and this dashboard does not execute actions.
+              {manualActions.length === 1 ? 'route requires' : 'routes require'} human approval. This
+              read-only workspace records no approval or execution event of its own.
+              {approvalState ? ` State source: ${approvalState.source}.` : ' The API did not return a decision state.'}
             </p>
           </div>
           <div className="route-stack">
             {manualActions.map(action => (
-              <span className={`route ${action.route}`} key={`approval-${actionKey(action)}`}>
+              <span className={`route ${routeClass(action.route)}`} key={`approval-${actionKey(action)}`}>
                 {routeLabel(action.route)} · {titleCaseToken(action.action)}
               </span>
             ))}
           </div>
-        </div>
+        </section>
       )}
     </div>
   )

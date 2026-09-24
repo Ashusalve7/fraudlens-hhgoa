@@ -41,22 +41,28 @@ const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
   timeStyle: 'short',
 })
 
-export function formatNumber(value, options = {}) {
+function finiteNumber(value) {
+  if (value === null || value === undefined || value === '') return null
   const number = Number(value)
-  if (!Number.isFinite(number)) return '—'
+  return Number.isFinite(number) ? number : null
+}
+
+export function formatNumber(value, options = {}) {
+  const number = finiteNumber(value)
+  if (number === null) return '—'
   if (options.compact) return compactIntegerFormatter.format(number)
   return integerFormatter.format(number)
 }
 
 export function formatCurrency(value, options = {}) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) return '—'
+  const number = finiteNumber(value)
+  if (number === null) return '—'
   return (options.compact ? compactCurrencyFormatter : currencyFormatter).format(number)
 }
 
 export function formatDecimal(value, digits = 2) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) return '—'
+  const number = finiteNumber(value)
+  if (number === null) return '—'
   if (digits === 2) return decimalFormatter.format(number)
   return new Intl.NumberFormat(undefined, {
     minimumFractionDigits: 0,
@@ -65,8 +71,8 @@ export function formatDecimal(value, digits = 2) {
 }
 
 export function formatPercent(value) {
-  const number = Number(value)
-  return Number.isFinite(number) ? percentFormatter.format(number) : '—'
+  const number = finiteNumber(value)
+  return number === null ? '—' : percentFormatter.format(number)
 }
 
 export function parseLocalDate(value) {
@@ -95,8 +101,8 @@ export function formatDateTime(value, fallback = 'Not supplied') {
 }
 
 export function formatLatency(value) {
-  const number = Number(value)
-  return Number.isFinite(number) ? `${decimalFormatter.format(number)} s` : '—'
+  const number = finiteNumber(value)
+  return number === null ? '—' : `${decimalFormatter.format(number)} s`
 }
 
 export function titleCaseToken(value) {

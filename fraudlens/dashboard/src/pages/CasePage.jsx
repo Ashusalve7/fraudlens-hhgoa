@@ -2,9 +2,22 @@ import { Link, useParams } from 'react-router-dom'
 import CaseWorkspace from '../components/CaseWorkspace.jsx'
 import ResourceState from '../components/ResourceState.jsx'
 import { useFraudLensData } from '../data/FraudLensData.jsx'
-import { formatNumber, pluralize } from '../lib/format.js'
+import { formatNumber } from '../lib/format.js'
 
-function CasePager({ previousCase, nextCase }) {
+function CasePager({ previousCase, nextCase, queueReady, queueStatus }) {
+  if (!queueReady) {
+    const message = queueStatus === 'error'
+      ? 'Case positions unavailable'
+      : queueStatus === 'success'
+        ? 'No case positions returned'
+        : 'Loading case positions…'
+    return (
+      <nav className="case-pager" aria-label="Case pagination">
+        <span className="pager-status" role="status">{message}</span>
+      </nav>
+    )
+  }
+
   return (
     <nav className="case-pager" aria-label="Case pagination">
       {previousCase ? (
@@ -50,15 +63,20 @@ export default function CasePage() {
   const nextCase = index >= 0 && index < cases.length - 1 ? cases[index + 1] : null
 
   return (
-    <main id="main-content" className="case-page" tabIndex="-1">
+    <main id="main-content" className="case-page" tabIndex={-1}>
       <div className="case-nav">
-        <Link to="/cases" className="back-link">← Case Queue</Link>
-        {casesResource.status === 'success' && cases.length > 0 && (
+        <Link to="/cases" className="back-link"><span aria-hidden="true">←</span> Case Queue</Link>
+        {casesResource.status === 'success' && cases.length > 0 && index >= 0 && (
           <span className="case-position">
-            Position {formatNumber(index + 1)} of {formatNumber(cases.length)} · {pluralize(cases.length, 'record')}
+            Position {formatNumber(index + 1)} of {formatNumber(cases.length)}
           </span>
         )}
-        <CasePager previousCase={previousCase} nextCase={nextCase} />
+        <CasePager
+          previousCase={previousCase}
+          nextCase={nextCase}
+          queueReady={casesResource.status === 'success' && cases.length > 0}
+          queueStatus={casesResource.status}
+        />
       </div>
 
       {casesResource.status === 'error' && (

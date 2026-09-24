@@ -22,23 +22,29 @@ export default function EvidenceList({ items }) {
   return (
     <ul className="evidence">
       {evidence.map((item, index) => {
-        const entityIds = Array.isArray(item.entity_ids) ? item.entity_ids : []
+        const source = String(item?.source || 'other').toLowerCase()
+        const sourceClass = ['graph', 'customer', 'document'].includes(source) ? source : 'other'
+        const entityIds = Array.isArray(item?.entity_ids) ? item.entity_ids : []
         const isExpanded = Boolean(expanded[index])
         const visibleIds = isExpanded ? entityIds : entityIds.slice(0, DEFAULT_VISIBLE_ENTITIES)
         const hiddenCount = entityIds.length - visibleIds.length
-        const key = `${item.ref || item.source || 'evidence'}-${index}`
+        const key = `${item?.ref || source || 'evidence'}-${index}`
+        const simulated = item?.simulated === true
+          || source === 'customer'
+            && String(item?.ref || '').toLowerCase().startsWith('evidence_request')
 
         return (
-          <li key={key} className={item.source || 'other'}>
+          <li key={key} className={`${sourceClass}${simulated ? ' simulated-evidence' : ''}`}>
             <div className="ev-meta">
-              <span className="ev-source">{titleCaseToken(item.source || 'Other')}</span>
-              <span className="ev-ref" translate="no">{item.ref || 'Reference not supplied'}</span>
+              <span className="ev-source">{titleCaseToken(item?.source || 'Other')}</span>
+              <span className="ev-ref" translate="no">{item?.ref || 'Reference not supplied'}</span>
             </div>
-            <p>{item.claim || 'No claim text returned.'}</p>
+            {simulated && <span className="assumed-label">Assumed evidence · Simulated</span>}
+            <p>{item?.claim || 'No claim text returned.'}</p>
             {entityIds.length > 0 && (
               <div className="entity-ids">
                 <span className="sr-only">Referenced entities: </span>
-                {visibleIds.map(id => <code key={id}>{id}</code>)}
+                {visibleIds.map((id, idIndex) => <code key={`${id}-${idIndex}`}>{id}</code>)}
                 {hiddenCount > 0 && (
                   <button
                     className="inline-action"

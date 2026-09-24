@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   Link,
   Navigate,
@@ -45,7 +45,7 @@ function RouteFocus() {
 
 function RouteLoading() {
   return (
-    <main id="main-content" className="route-state" tabIndex="-1">
+    <main id="main-content" className="route-state" tabIndex={-1}>
       <span className="loading-mark" aria-hidden="true" />
       <h1>Loading analytics…</h1>
       <p>Chart code is loading only when this route is opened.</p>
@@ -55,7 +55,7 @@ function RouteLoading() {
 
 function NotFound() {
   return (
-    <main id="main-content" className="route-state" tabIndex="-1">
+    <main id="main-content" className="route-state" tabIndex={-1}>
       <p className="eyebrow">404</p>
       <h1>Workspace view not found</h1>
       <p>The requested route is not part of the FraudLens dashboard.</p>
@@ -65,6 +65,7 @@ function NotFound() {
 }
 
 function validCount(value) {
+  if (value === null || value === undefined || value === '') return null
   const number = Number(value)
   return Number.isFinite(number) ? formatNumber(number, { compact: true }) : null
 }
@@ -74,9 +75,17 @@ function WorkspaceShell() {
   const location = useLocation()
   const [navOpen, setNavOpen] = useState(false)
   const menuButtonRef = useRef(null)
+  const sidebarRef = useRef(null)
   const cases = Array.isArray(casesResource.data) ? casesResource.data : []
   const transactions = validCount(statsResource.data?.counts?.Transaction)
   const agentCases = validCount(statsResource.data?.counts?.AgentCase)
+
+  const closeNavigation = useCallback((restoreFocus = true) => {
+    setNavOpen(false)
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => menuButtonRef.current?.focus())
+    }
+  }, [])
 
   useEffect(() => {
     setNavOpen(false)
@@ -86,29 +95,62 @@ function WorkspaceShell() {
     if (!navOpen) return undefined
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+    let focusFrame = window.requestAnimationFrame(() => {
+      focusFrame = window.requestAnimationFrame(() => {
+        sidebarRef.current?.querySelector('.nav-item')?.focus()
+      })
+    })
     const handleKeyDown = event => {
       if (event.key === 'Escape') {
-        setNavOpen(false)
-        window.requestAnimationFrame(() => menuButtonRef.current?.focus())
+        event.preventDefault()
+        closeNavigation()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = [...(sidebarRef.current?.querySelectorAll(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) || [])]
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => {
+      window.cancelAnimationFrame(focusFrame)
       document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [navOpen])
+  }, [closeNavigation, navOpen])
 
   const caseStatus = casesResource.status === 'loading'
     ? 'Loading case records…'
     : casesResource.status === 'error'
       ? 'Case API unavailable'
       : `${formatNumber(cases.length)} case records returned`
+  const graphDegraded = statsResource.status === 'success'
+    && (statsResource.data?.available === false || statsResource.data?.status === 'degraded')
+  const overallStatus = casesResource.status === 'error' || statsResource.status === 'error'
+    ? 'error'
+    : graphDegraded
+      ? 'degraded'
+      : casesResource.status === 'loading' || statsResource.status === 'loading'
+        ? 'loading'
+        : 'success'
   const graphStatus = statsResource.status === 'loading'
     ? 'Loading snapshot…'
     : statsResource.status === 'error'
       ? 'Snapshot unavailable'
-      : `${statsResource.data?.graph || 'Graph'} snapshot returned`
+      : graphDegraded
+        ? 'Snapshot partially available'
+        : `${statsResource.data?.graph || 'Graph'} snapshot returned`
 
   return (
     <>
@@ -119,10 +161,7 @@ function WorkspaceShell() {
             className="sidebar-scrim"
             type="button"
             aria-label="Close navigation"
-            onClick={() => {
-              setNavOpen(false)
-              window.requestAnimationFrame(() => menuButtonRef.current?.focus())
-            }}
+            onClick={() => closeNavigation()}
           />
         )}
 
@@ -143,7 +182,12 @@ function WorkspaceShell() {
           </button>
         </header>
 
-        <aside id="primary-navigation" className="sidebar" aria-label="FraudLens sidebar">
+        <aside
+          id="primary-navigation"
+          ref={sidebarRef}
+          className="sidebar"
+          aria-label="FraudLens sidebar"
+        >
           <Link className="brand" to="/cases" onClick={() => setNavOpen(false)}>
             <span className="brand-mark" aria-hidden="true">FL</span>
             <span>
@@ -173,10 +217,10 @@ function WorkspaceShell() {
             </NavLink>
           </nav>
 
-          <section className="sidebar-status" aria-labelledby="data-status-title">
+          <section className="sidebar-status" aria-labelledby="data-status-title" aria-live="polite">
             <div className="sidebar-section-title">
               <h2 id="data-status-title">Data Status</h2>
-              <span className={`status-indicator ${casesResource.status}`} aria-hidden="true" />
+              <span className={`status-indicator ${overallStatus}`} aria-hidden="true" />
             </div>
             <p className="status-primary">{caseStatus}</p>
             <dl>
@@ -186,11 +230,11 @@ function WorkspaceShell() {
               </div>
               <div>
                 <dt>Transactions</dt>
-                <dd>{transactions || 'Unavailable'}</dd>
+                <dd>{transactions ?? 'Unavailable'}</dd>
               </div>
               <div>
                 <dt>Agent cases</dt>
-                <dd>{agentCases || 'Unavailable'}</dd>
+                <dd>{agentCases ?? 'Unavailable'}</dd>
               </div>
             </dl>
             {(casesResource.status === 'error' || statsResource.status === 'error') && (

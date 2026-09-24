@@ -10,13 +10,16 @@ const severityColor = probability =>
         : '#087443'
 
 export default function RiskGauge({ value, size = 62, stroke = 7 }) {
+  const hasValue = value !== null && value !== undefined && value !== ''
   const numericValue = Number(value)
-  const percentage = Number.isFinite(numericValue)
+  const validValue = hasValue && Number.isFinite(numericValue) && numericValue >= 0 && numericValue <= 1
+  const percentage = validValue
     ? Math.max(0, Math.min(1, numericValue))
     : 0
+  const accessibleValue = validValue ? formatPercent(numericValue) : 'not scored'
   const radius = (size - stroke) / 2
   const circumference = 2 * Math.PI * radius
-  const color = severityColor(percentage)
+  const color = validValue ? severityColor(percentage) : '#596579'
 
   return (
     <svg
@@ -24,10 +27,10 @@ export default function RiskGauge({ value, size = 62, stroke = 7 }) {
       height={size}
       viewBox={`0 0 ${size} ${size}`}
       role="img"
-      aria-label={`Estimated fraud likelihood: ${formatPercent(numericValue)}`}
+      aria-label={`Estimated fraud likelihood: ${accessibleValue}`}
       className="risk-gauge"
     >
-      <title>Estimated fraud likelihood: {formatPercent(numericValue)}</title>
+      <title>Estimated fraud likelihood: {accessibleValue}</title>
       <circle
         cx={size / 2}
         cy={size / 2}
@@ -59,7 +62,9 @@ export default function RiskGauge({ value, size = 62, stroke = 7 }) {
           fontVariantNumeric: 'tabular-nums',
         }}
       >
-        {new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(percentage * 100)}
+        {validValue
+          ? new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(percentage * 100)
+          : '—'}
       </text>
     </svg>
   )

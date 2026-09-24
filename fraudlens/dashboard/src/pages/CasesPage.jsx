@@ -11,6 +11,7 @@ const RISK_OPTIONS = [
   ['high', 'High (60–84.99%)'],
   ['elevated', 'Elevated (30–59.99%)'],
   ['low', 'Lower (<30%)'],
+  ['unknown', 'Not scored'],
 ]
 
 function StatCard({ label, value, detail, tone = '' }) {
@@ -89,6 +90,7 @@ export default function CasesPage() {
   const query = searchParams.get('q') || ''
   const verdict = searchParams.get('verdict') || 'all'
   const risk = searchParams.get('risk') || 'all'
+  const status = searchParams.get('status') || 'all'
   const sarOnly = searchParams.get('sar') === 'true'
   const sort = searchParams.get('sort') || 'risk'
   const deferredQuery = useDeferredValue(query.trim().toLowerCase())
@@ -112,11 +114,14 @@ export default function CasesPage() {
         item.pattern,
         item.verdict,
         item.status,
+        item.sar ? 'sar draft' : '',
+        String(item.exposure_usd ?? ''),
       ].some(value => String(value || '').toLowerCase().includes(deferredQuery))
       const matchesVerdict = verdict === 'all' || item.verdict === verdict
       const matchesRisk = risk === 'all' || getRiskBand(item.fraud_probability).key === risk
+      const matchesStatus = status === 'all' || item.status === status
       const matchesSar = !sarOnly || Boolean(item.sar)
-      return matchesQuery && matchesVerdict && matchesRisk && matchesSar
+      return matchesQuery && matchesVerdict && matchesRisk && matchesStatus && matchesSar
     })
 
     return matching.sort((left, right) => {
@@ -126,11 +131,11 @@ export default function CasesPage() {
       if (sort === 'case') return String(left.case_id).localeCompare(String(right.case_id))
       return (Number(right.fraud_probability) || 0) - (Number(left.fraud_probability) || 0)
     })
-  }, [cases, deferredQuery, risk, sarOnly, sort, verdict])
+  }, [cases, deferredQuery, risk, sarOnly, sort, status, verdict])
 
   if (casesResource.status === 'loading') {
     return (
-      <main id="main-content" className="home" tabIndex="-1">
+      <main id="main-content" className="home" tabIndex={-1}>
         <header className="page-header">
           <div>
             <p className="eyebrow">Analyst Workspace</p>
@@ -154,7 +159,7 @@ export default function CasesPage() {
 
   if (casesResource.status === 'error') {
     return (
-      <main id="main-content" className="home" tabIndex="-1">
+      <main id="main-content" className="home" tabIndex={-1}>
         <header className="page-header">
           <div>
             <p className="eyebrow">Analyst Workspace</p>
@@ -175,7 +180,7 @@ export default function CasesPage() {
 
   if (cases.length === 0) {
     return (
-      <main id="main-content" className="home" tabIndex="-1">
+      <main id="main-content" className="home" tabIndex={-1}>
         <header className="page-header">
           <div>
             <p className="eyebrow">Analyst Workspace</p>
@@ -199,11 +204,16 @@ export default function CasesPage() {
   const totalExposure = cases
     .filter(item => item.verdict === 'fraud')
     .reduce((sum, item) => sum + (Number(item.exposure_usd) || 0), 0)
-  const transactionCount = Number(statsResource.data?.counts?.Transaction)
+  const rawTransactionCount = statsResource.data?.counts?.Transaction
+  const transactionCount = rawTransactionCount === null || rawTransactionCount === undefined
+    ? Number.NaN
+    : Number(rawTransactionCount)
+  const graphSnapshotDegraded = statsResource.status === 'success'
+    && (statsResource.data?.available === false || statsResource.data?.status === 'degraded')
   const featuredCase = cases.find(item => item.case_id === 'HHG-014')
 
   return (
-    <main id="main-content" className="home" tabIndex="-1">
+    <main id="main-content" className="home" tabIndex={-1}>
       <header className="page-header">
         <div>
           <p className="eyebrow">Analyst Workspace</p>
@@ -250,14 +260,16 @@ export default function CasesPage() {
             ? 'Reading graph snapshot…'
             : statsResource.status === 'error'
               ? 'Snapshot unavailable'
-              : Number.isFinite(transactionCount)
-                ? `Returned by ${statsResource.data?.graph || 'graph API'}`
-                : 'Transaction count not supplied'}
+              : graphSnapshotDegraded
+                ? 'Partial counts returned; transaction total may be unavailable'
+                : Number.isFinite(transactionCount)
+                  ? `Returned by ${statsResource.data?.graph || 'graph API'}`
+                  : 'Transaction count not supplied'}
           tone="neutral"
         />
-        {statsResource.status === 'error' && (
+        {(statsResource.status === 'error' || graphSnapshotDegraded) && (
           <button className="button secondary stat-retry" type="button" onClick={statsResource.retry}>
-            Retry Graph Snapshot
+            {graphSnapshotDegraded ? 'Refresh Graph Snapshot' : 'Retry Graph Snapshot'}
           </button>
         )}
       </section>
@@ -311,6 +323,21 @@ export default function CasesPage() {
             >
               <option value="all">All risk bands</option>
               {RISK_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+            </select>
+          </div>
+          <div className="filter-field">
+            <label htmlFor="status-filter">Recorded status</label>
+            <select
+              id="status-filter"
+              name="status"
+              value={status}
+              onChange={event => updateFilter('status', event.target.value, 'all')}
+            >
+              <option value="all">All statuses</option>
+              <option value="closed_fraud">Closed fraud</option>
+              <option value="closed_legitimate">Closed legitimate</option>
+              <option value="escalated">Escalated</option>
+              <option value="uncertain">Uncertain</option>
             </select>
           </div>
           <div className="filter-field">

@@ -59,8 +59,8 @@ export default function SimilarCases({ caseRecord, explanation }) {
         <>
           <p className="similar-intro">
             {availableOutcomes > 0
-              ? 'Outcome fields below were supplied by the API.'
-              : 'Only prior-case IDs were supplied. No outcome or disposition was inferred.'}
+              ? 'Outcome fields below were supplied by the API. Their influence on this recommendation was not separately supplied.'
+              : 'Only prior-case IDs were supplied. No outcome, disposition, or decision influence was inferred.'}
           </p>
           <ul className="similar-list">
             {outcomes.map((item, index) => {

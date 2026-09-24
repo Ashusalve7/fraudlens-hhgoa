@@ -15,7 +15,7 @@ import {
 import ResourceState from './ResourceState.jsx'
 import { useFraudLensData } from '../data/FraudLensData.jsx'
 import { getVerdictLabel } from '../lib/case.js'
-import { formatCurrency, formatDecimal, formatNumber, pluralize } from '../lib/format.js'
+import { formatCurrency, formatLatency, formatNumber, pluralize, titleCaseToken } from '../lib/format.js'
 
 const COLORS = {
   fraud: '#b42318',
@@ -56,13 +56,13 @@ export default function AnalyticsView() {
       return counts
     }, {})
     const byPattern = Object.entries(patternCounts)
-      .map(([name, value]) => ({ name: name.replace(/_/g, ' '), value }))
+      .map(([name, value]) => ({ name: titleCaseToken(name), value }))
       .sort((left, right) => right.value - left.value)
     const buckets = [
-      ['0–20', 0, 20],
-      ['20–40', 20, 40],
-      ['40–60', 40, 60],
-      ['60–80', 60, 80],
+      ['0–19.99', 0, 20],
+      ['20–39.99', 20, 40],
+      ['40–59.99', 40, 60],
+      ['60–79.99', 60, 80],
       ['80–100', 80, 100],
     ].map(([range, lower, upper]) => ({
       range,
@@ -75,7 +75,10 @@ export default function AnalyticsView() {
       (sum, item) => sum + (Number(item.exposure_usd) || 0),
       0,
     )
-    const totalToolCalls = cases.reduce((sum, item) => sum + (Number(item.tool_calls) || 0), 0)
+    const totalAffectedTransactions = cases.reduce(
+      (sum, item) => sum + Math.max(0, Number(item.affected_count) || 0),
+      0,
+    )
     const totalLatency = cases.reduce((sum, item) => sum + (Number(item.latency_s) || 0), 0)
     const biggest = [...fraudCases].sort(
       (left, right) => (Number(right.exposure_usd) || 0) - (Number(left.exposure_usd) || 0),
@@ -87,7 +90,7 @@ export default function AnalyticsView() {
       byPattern,
       buckets,
       totalExposure,
-      totalToolCalls,
+      totalAffectedTransactions,
       averageLatency: cases.length ? totalLatency / cases.length : 0,
       biggest,
       sarDraftCount: cases.filter(item => item.sar).length,
@@ -96,7 +99,7 @@ export default function AnalyticsView() {
 
   if (casesResource.status === 'loading') {
     return (
-      <main id="main-content" className="analytics-page" tabIndex="-1">
+      <main id="main-content" className="analytics-page" tabIndex={-1}>
         <header className="page-header">
           <div>
             <p className="eyebrow">Descriptive Snapshot</p>
@@ -114,7 +117,7 @@ export default function AnalyticsView() {
 
   if (casesResource.status === 'error') {
     return (
-      <main id="main-content" className="analytics-page" tabIndex="-1">
+      <main id="main-content" className="analytics-page" tabIndex={-1}>
         <header className="page-header">
           <div>
             <p className="eyebrow">Descriptive Snapshot</p>
@@ -134,7 +137,7 @@ export default function AnalyticsView() {
 
   if (cases.length === 0) {
     return (
-      <main id="main-content" className="analytics-page" tabIndex="-1">
+      <main id="main-content" className="analytics-page" tabIndex={-1}>
         <header className="page-header">
           <div>
             <p className="eyebrow">Descriptive Snapshot</p>
@@ -153,14 +156,14 @@ export default function AnalyticsView() {
   }
 
   return (
-    <main id="main-content" className="analytics-page" tabIndex="-1">
+    <main id="main-content" className="analytics-page" tabIndex={-1}>
       <header className="page-header">
         <div>
           <p className="eyebrow">Descriptive Snapshot</p>
           <h1>Case-Pack Analytics</h1>
           <p className="page-lede">
-            Distribution and operating-cost summaries for the returned case pack. This is not a
-            live monitoring view, model-validation report, or estimate of production performance.
+            Distribution and recorded-run summaries for the returned case pack. This is not a live
+            monitoring view, model-validation report, or estimate of production performance.
           </p>
         </div>
         <span className="context-chip">{pluralize(cases.length, 'case')} included</span>
@@ -183,14 +186,14 @@ export default function AnalyticsView() {
           detail="Draft availability; filing unconfirmed"
         />
         <StatCard
-          label="Average Tool Calls"
-          value={formatDecimal(analytics.totalToolCalls / cases.length, 1)}
-          detail="Per returned case"
+          label="Affected Transactions"
+          value={formatNumber(analytics.totalAffectedTransactions)}
+          detail="Transactions in recorded case episodes"
         />
         <StatCard
           label="Average Recorded Run"
-          value={`${formatDecimal(analytics.averageLatency, 2)} s`}
-          detail="Wall-clock value in case files"
+          value={formatLatency(analytics.averageLatency)}
+          detail="Mean wall-clock value in case files"
         />
         <StatCard
           label="Largest Exposure"
@@ -225,6 +228,7 @@ export default function AnalyticsView() {
                     innerRadius={58}
                     outerRadius={88}
                     paddingAngle={2}
+                    isAnimationActive={false}
                   >
                     {analytics.byVerdict.map(item => <Cell key={item.name} fill={COLORS[item.name]} />)}
                   </Pie>
@@ -247,7 +251,7 @@ export default function AnalyticsView() {
                   <XAxis dataKey="range" tick={{ fontSize: 11 }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="cases" fill="#2456d6" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="cases" fill="#2456d6" radius={[3, 3, 0, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -310,7 +314,7 @@ export default function AnalyticsView() {
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} angle={-12} textAnchor="end" height={58} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="value" fill="#2456d6" radius={[3, 3, 0, 0]}>
+                  <Bar dataKey="value" fill="#2456d6" radius={[3, 3, 0, 0]} isAnimationActive={false}>
                     <LabelList dataKey="value" position="top" style={{ fontSize: 11, fill: '#475569' }} />
                   </Bar>
                 </BarChart>

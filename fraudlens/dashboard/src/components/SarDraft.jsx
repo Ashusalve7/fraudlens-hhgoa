@@ -14,6 +14,7 @@ function buildSarText(answer) {
   return [
     `SAR Draft — ${answer.case_id}`,
     'DRAFT ONLY — filing status is not confirmed by the API',
+    'Source artifact only — the API does not independently validate every narrative claim',
     '',
     `Subjects: ${subjects}`,
     `Total amount: ${formatCurrency(sar.total_amount_usd)}`,
@@ -45,18 +46,23 @@ async function copyText(text) {
 }
 
 export default function SarDraft({ answer }) {
-  const [copyStatus, setCopyStatus] = useState('')
+  const [copyStatus, setCopyStatus] = useState({ type: '', message: '' })
+  const [copying, setCopying] = useState(false)
   const sar = answer?.sar || {}
   const hasSarRecord = Boolean(sar.file || sar.narrative || sar.reason)
   const text = useMemo(() => buildSarText(answer), [answer])
   const dates = Array.isArray(sar.activity_dates) ? sar.activity_dates : []
+  const subjects = Array.isArray(sar.subjects) ? sar.subjects : []
 
   async function handleCopy() {
+    setCopying(true)
     try {
       await copyText(text)
-      setCopyStatus('SAR Draft copied to the clipboard.')
+      setCopyStatus({ type: 'success', message: 'SAR Draft copied to the clipboard.' })
     } catch {
-      setCopyStatus('The draft could not be copied. Use Export Draft instead.')
+      setCopyStatus({ type: 'error', message: 'The draft could not be copied. Use Export Draft instead.' })
+    } finally {
+      setCopying(false)
     }
   }
 
@@ -70,7 +76,7 @@ export default function SarDraft({ answer }) {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
-    setCopyStatus('SAR Draft export prepared.')
+    setCopyStatus({ type: 'success', message: 'SAR Draft text export prepared.' })
   }
 
   return (
@@ -101,6 +107,7 @@ export default function SarDraft({ answer }) {
         <>
           <p className="simulation-note">
             This is a case-pack draft, not confirmation that a report was filed with any authority.
+            Copy and export preserve the stored narrative; verify every claim against source evidence.
           </p>
           <div className="draft-toolbar">
             <div>
@@ -108,8 +115,8 @@ export default function SarDraft({ answer }) {
               <span>Review before any external use.</span>
             </div>
             <div className="button-row">
-              <button className="button secondary" type="button" onClick={handleCopy}>
-                Copy Draft
+              <button className="button secondary" type="button" onClick={handleCopy} disabled={copying}>
+                {copying ? 'Copying Draft…' : 'Copy Draft'}
               </button>
               <button className="button secondary" type="button" onClick={handleExport}>
                 Export Draft (.txt)
@@ -121,7 +128,7 @@ export default function SarDraft({ answer }) {
           <dl className="sar-facts">
             <div>
               <dt>Subjects</dt>
-              <dd>{sar.subjects?.length ? sar.subjects.join(', ') : 'Not supplied'}</dd>
+              <dd>{subjects.length ? subjects.join(', ') : 'Not supplied'}</dd>
             </div>
             <div>
               <dt>Total amount</dt>
@@ -136,7 +143,13 @@ export default function SarDraft({ answer }) {
               </dd>
             </div>
           </dl>
-          <p className="sr-status" role="status" aria-live="polite">{copyStatus}</p>
+          <p
+            className={`sr-status${copyStatus.type === 'error' ? ' error' : ''}`}
+            role="status"
+            aria-live="polite"
+          >
+            {copyStatus.message}
+          </p>
         </>
       )}
     </section>

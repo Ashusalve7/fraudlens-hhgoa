@@ -3,6 +3,7 @@ import { formatDecimal, formatNumber, formatPercent, titleCaseToken } from '../l
 import ResourceState from './ResourceState.jsx'
 
 function contributionValue(value) {
+  if (value === null || value === undefined || value === '') return titleCaseToken(value)
   const number = Number(value)
   return Number.isFinite(number) ? formatDecimal(number, 3) : titleCaseToken(value)
 }
@@ -52,7 +53,7 @@ export default function ScoreExplanation({ explanationResource, caseRecord }) {
         <ResourceState
           status="error"
           title="Score explanation unavailable"
-          message={explanationResource.error}
+          message={`${explanationResource.error} The recorded case and any device traversal remain available.`}
           actionLabel="Retry Explanation"
           onAction={explanationResource.retry}
         />
@@ -106,7 +107,7 @@ export default function ScoreExplanation({ explanationResource, caseRecord }) {
               ) : (
                 <div
                   className="data-table-wrap"
-                  tabIndex="0"
+                  tabIndex={0}
                   aria-label="Scrollable feature contribution table"
                 >
                   <table className="data-table contribution-table">
@@ -150,7 +151,7 @@ export default function ScoreExplanation({ explanationResource, caseRecord }) {
               <p className="explanation-footnote">
                 {formatNumber(towardFraud)} of {formatNumber(contributions.length)} features push
                 toward fraud · {formatNumber(explanation.n_evidence ?? caseRecord.evidence?.length ?? 0)}
-                {' '}grounded evidence items · {formatNumber(similarCount)} similar case IDs.
+                {' '}evidence items returned · {formatNumber(similarCount)} similar case IDs.
               </p>
             </div>
           )}
