@@ -7,11 +7,13 @@ and grows an episode only when a row has an anomaly signal appropriate to the
 selected pattern.  It is pure Python so that it can be used by both the online
 runner and offline evaluation.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime, timedelta
 from math import isfinite
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 SMALL_AUTH_LIMIT = 5.0
 TESTING_WINDOW = timedelta(hours=1)
@@ -22,34 +24,44 @@ OOR_WINDOW = timedelta(hours=72)
 
 
 def parse_ts(value: Any) -> datetime | None:
-    """Parse the timestamp spellings used by CSV, parquet, and TigerGraph."""
+    """Parse a source timestamp and normalize aware values to naive UTC.
+
+    The sponsor files are naive UTC.  Normalizing ISO-8601 offsets here keeps
+    cutoff comparisons deterministic instead of leaking ``aware``/``naive``
+    comparison errors from graph adapters or tests.
+    """
     if value is None or value == "" or value == "_NA_":
         return None
     if isinstance(value, datetime):
-        return value
-    # pandas.Timestamp and similar objects expose to_pydatetime without making
-    # pandas a runtime dependency of the agent.
-    if hasattr(value, "to_pydatetime"):
+        parsed = value
+    elif hasattr(value, "to_pydatetime"):
         try:
             result = value.to_pydatetime()
-            if isinstance(result, datetime):
-                return result
         except Exception:
-            pass
-    text = str(value).strip()
-    if not text:
-        return None
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        return datetime.fromisoformat(text)
-    except ValueError:
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d %H:%M:%S"):
-            try:
-                return datetime.strptime(text, fmt)
-            except ValueError:
-                continue
-    return None
+            result = None
+        if not isinstance(result, datetime):
+            return None
+        parsed = result
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y/%m/%d %H:%M:%S"):
+                try:
+                    parsed = datetime.strptime(text, fmt)
+                    break
+                except ValueError:
+                    continue
+            else:
+                return None
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(UTC).replace(tzinfo=None)
+    return parsed
 
 
 def _number(value: Any, default: float = 0.0) -> float:
@@ -117,6 +129,44 @@ def is_proxy(row: Mapping[str, Any]) -> bool:
     return any(token in value for token in ("ANONYMOUS", "HIDDEN", "PROXY"))
 
 
+def _match_value_is_anomaly(value: Any) -> bool:
+    if value in (None, "", "_NA_"):
+        return False
+    if isinstance(value, bool):
+        return not value
+    if isinstance(value, (int, float)):
+        return value == 0
+    text = str(value).strip().lower()
+    if text in {"f", "false", "n", "no", "mismatch"}:
+        return True
+    try:
+        return float(text) == 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def is_match_anomaly(row: Mapping[str, Any]) -> bool:
+    """Return whether an M1-M9 identity-match field is a mismatch.
+
+    Vesta's source uses 0/1 while normalized graph fixtures often spell the
+    values F/T.  A present *matching* flag is not an anomaly and must not turn
+    an ordinary mixed-channel sequence into account takeover.
+    """
+    for index in range(1, 10):
+        if _match_value_is_anomaly(row.get(f"M{index}")):
+            return True
+    flags = row.get("m_flags", row.get("M_flags", ""))
+    for part in str(flags or "").split("|"):
+        key, separator, value = part.partition("=")
+        if (
+            separator
+            and key.strip().upper() in {f"M{i}" for i in range(1, 10)}
+            and _match_value_is_anomaly(value)
+        ):
+            return True
+    return False
+
+
 def is_explicit_anomaly(row: Mapping[str, Any]) -> bool:
     for key in ("anomalous", "is_anomalous", "suspicious", "fraud_related", "is_fraud"):
         value = row.get(key)
@@ -156,15 +206,17 @@ def rows_at_cutoff(
     only when its own timestamp is at or before the cutoff.
     """
     limit = parse_ts(cutoff)
+    if cutoff is not None and limit is None:
+        return []
     result: list[dict[str, Any]] = []
     for row in rows:
         ts = txn_ts(row)
-        if limit is not None and ts is not None and ts > limit:
+        if limit is not None and (ts is None or ts > limit):
             continue
         result.append(dict(row))
     if flagged is not None:
         fts = txn_ts(flagged)
-        if limit is None or fts is None or fts <= limit:
+        if limit is None or (fts is not None and fts <= limit):
             fid = txn_id(flagged)
             if fid and not any(txn_id(r) == fid for r in result):
                 result.append(dict(flagged))
@@ -191,7 +243,9 @@ def _nearest_cluster(
     online activity.  It avoids the old behavior of returning every row in a
     broad +/- window.
     """
-    candidates = [r for r in rows if predicate(r) and _distance(txn_ts(r), center) <= max_span.total_seconds()]
+    candidates = [
+        r for r in rows if predicate(r) and _distance(txn_ts(r), center) <= max_span.total_seconds()
+    ]
     if not candidates:
         return []
     candidates.sort(key=lambda r: _distance(txn_ts(r), center))
@@ -217,24 +271,26 @@ def _testing_episode(
         return [dict(flagged)]
     ordered = sorted(rows, key=lambda r: (txn_ts(r) or datetime.max, txn_id(r)))
     small = [
-        r for r in ordered
-        if txn_channel(r) == "online" and txn_amount(r) < SMALL_AUTH_LIMIT
+        r
+        for r in ordered
+        if txn_channel(r) == "online"
+        and txn_amount(r) < SMALL_AUTH_LIMIT
+        and _distance(txn_ts(r), center) <= PATTERN_WINDOW.total_seconds()
     ]
     best: list[dict[str, Any]] = []
     best_score: tuple[int, float] | None = None
     for i, start in enumerate(small):
-        cluster = [
-            r for r in small[i:]
-            if (txn_ts(r) - (txn_ts(start) or center)) <= TESTING_WINDOW
-        ]
+        cluster = [r for r in small[i:] if (txn_ts(r) - (txn_ts(start) or center)) <= TESTING_WINDOW]
         if len(cluster) < 3:
             continue
         last_small = max((txn_ts(r) or center for r in cluster), default=center)
         threshold = max(SMALL_AUTH_LIMIT, max(txn_amount(r) for r in cluster) * 1.25)
         follow = [
-            r for r in ordered
+            r
+            for r in ordered
             if txn_ts(r) is not None
             and last_small < txn_ts(r) <= last_small + TESTING_FOLLOW_UP
+            and _distance(txn_ts(r), center) <= PATTERN_WINDOW.total_seconds()
             and txn_channel(r) == "online"
             and txn_amount(r) >= threshold
         ]
@@ -268,7 +324,12 @@ def _online_episode(
     if center is None:
         return [dict(flagged)]
     all_rows = [r for r in rows if txn_ts(r) is not None]
-    online = [r for r in all_rows if txn_channel(r) == "online" and abs((txn_ts(r) or center) - center).total_seconds() <= PATTERN_WINDOW.total_seconds()]
+    online = [
+        r
+        for r in all_rows
+        if txn_channel(r) == "online"
+        and abs((txn_ts(r) or center) - center).total_seconds() <= PATTERN_WINDOW.total_seconds()
+    ]
     if not online:
         return [dict(flagged)]
     product = str(flagged.get("product_cd") or flagged.get("ProductCD") or "")
@@ -281,7 +342,11 @@ def _online_episode(
             return True
         if new_device and (is_new_device(row) or is_proxy(row) or (device and txn_device_id(row) == device)):
             return True
-        if product and str(row.get("product_cd") or row.get("ProductCD") or "") not in {"", product} and bool(features.get("product_new")):
+        if (
+            product
+            and str(row.get("product_cd") or row.get("ProductCD") or "") not in {"", product}
+            and bool(features.get("product_new"))
+        ):
             return True
         if bool(features.get("amt_ratio_30d") and _number(features.get("amt_ratio_30d")) >= 2.0):
             # A high amount ratio is evidence for the episode, but only when the
@@ -311,7 +376,8 @@ def _oor_episode(
         return [dict(flagged)]
     region = str(flagged.get("addr1") or flagged.get("region") or "")
     same_region = [
-        r for r in rows
+        r
+        for r in rows
         if txn_channel(r) == "in_person"
         and str(r.get("addr1") or r.get("region") or "") == region
         and _distance(txn_ts(r), center) <= OOR_WINDOW.total_seconds()
@@ -345,11 +411,8 @@ def _ato_episode(
         return [dict(flagged)]
     selected: list[dict[str, Any]] = []
     for row in window:
-        if txn_id(row) == txn_id(flagged) or is_explicit_anomaly(row):
-            selected.append(row)
-        elif is_new_device(row) or is_proxy(row):
-            selected.append(row)
-        elif str(row.get("m_flags") or "").strip() and txn_channel(row) != txn_channel(flagged):
+        is_identity_anomaly = is_new_device(row) or is_proxy(row) or is_match_anomaly(row)
+        if txn_id(row) == txn_id(flagged) or is_explicit_anomaly(row) or is_identity_anomaly:
             selected.append(row)
     if len(selected) < 2:
         # Preserve the mixed-channel fact, but only add the closest row in the
@@ -372,10 +435,17 @@ def _undocumented_episode(
     center = txn_ts(flagged)
     if center is None:
         return [dict(flagged)]
-    selected = [r for r in rows if is_explicit_anomaly(r) and _distance(txn_ts(r), center) <= timedelta(days=7).total_seconds()]
+    selected = [
+        r
+        for r in rows
+        if is_explicit_anomaly(r) and _distance(txn_ts(r), center) <= timedelta(days=7).total_seconds()
+    ]
     # Some graph adapters mark coordinated rows with a shared-entity field.
     for row in rows:
-        if any(bool(row.get(k)) for k in ("coordinated", "connected_fraud", "same_ring")) and _distance(txn_ts(row), center) <= timedelta(days=7).total_seconds():
+        if (
+            any(bool(row.get(k)) for k in ("coordinated", "connected_fraud", "same_ring"))
+            and _distance(txn_ts(row), center) <= timedelta(days=7).total_seconds()
+        ):
             selected.append(row)
     return _unique_rows(selected + [flagged])
 
@@ -397,6 +467,8 @@ def build_episode(
     f = dict(flagged)
     fts = txn_ts(f)
     limit = parse_ts(cutoff) if cutoff is not None else fts
+    if cutoff is not None and limit is None:
+        return []
     visible = rows_at_cutoff(rows, limit, flagged=f)
     if fts is not None and limit is not None and fts > limit:
         return []
@@ -441,7 +513,8 @@ def episode_bounds(rows: Iterable[Mapping[str, Any]]) -> tuple[str, str, str]:
 
 
 def episode_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
-    return _unique_rows(rows) and [txn_id(r) for r in _unique_rows(rows) if txn_id(r)]
+    unique = _unique_rows(rows)
+    return [txn_id(row) for row in unique if txn_id(row)]
 
 
 __all__ = [
@@ -452,6 +525,7 @@ __all__ = [
     "build_episode",
     "episode_bounds",
     "episode_ids",
+    "is_match_anomaly",
     "is_new_device",
     "is_proxy",
     "parse_ts",

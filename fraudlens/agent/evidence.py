@@ -4,22 +4,26 @@ The production graph remains behind this small adapter.  The adapter is also
 constructor-injectable, which keeps the decision core testable without a live
 TigerGraph connection.
 """
+
 from __future__ import annotations
 
 import copy
+import sys
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, Mapping
+from math import isfinite
+from pathlib import Path
+from typing import Any
 
 
 def _connection():
     # Import lazily so importing the decision module never opens a graph
     # connection merely to run unit tests.
-    from pathlib import Path
-    import sys
     pipeline = str(Path(__file__).resolve().parent.parent / "pipeline")
     if pipeline not in sys.path:
         sys.path.insert(0, pipeline)
     from tg import get_conn  # type: ignore
+
     return get_conn()
 
 
@@ -34,7 +38,7 @@ class Evidence:
         self.case_id: str | None = None
         self.query_log: list[dict[str, Any]] = []
 
-    def begin_case(self, case_id: str) -> "Evidence":
+    def begin_case(self, case_id: str) -> Evidence:
         """Start a fresh audit ledger; counts never carry across cases."""
         self.case_id = str(case_id)
         self.calls = []
@@ -88,7 +92,7 @@ class Evidence:
                     name = str(attr_key)
                     for prefix in (f"{key}.", "S.", "T.", "T2.", "Cards.", "Custs.", "Devices.", "Cases."):
                         if name.startswith(prefix):
-                            name = name[len(prefix):]
+                            name = name[len(prefix) :]
                             break
                     row[name] = value
                 vertex_id = raw.get("v_id", raw.get("id"))
@@ -179,7 +183,15 @@ class Evidence:
             {"in_pattern": str(pattern), "in_exposure_usd": float(exposure)},
         )
         rows = self._rows(blocks, "S")
-        rows.sort(key=lambda row: abs(float(row.get("exposure_usd", 0) or 0) - float(exposure or 0)))
+
+        def distance(row: Mapping[str, Any]) -> float:
+            try:
+                value = float(row.get("exposure_usd", 0) or 0)
+            except (TypeError, ValueError):
+                return float("inf")
+            return abs(value - float(exposure or 0)) if isfinite(value) else float("inf")
+
+        rows.sort(key=distance)
         return rows
 
     def write_agent_case(
@@ -201,13 +213,39 @@ class Evidence:
         conn.upsertVertexDataFrame(pd.DataFrame([payload]), "AgentCase", v_id="case_id")
         frames: list[tuple[str, Any, str, str, dict[str, str]]] = []
         if txn_ids:
-            frames.append(("AG_TXN", pd.DataFrame({"from": [case_id] * len(txn_ids), "to": txn_ids}), "Transaction", "", {}))
+            frames.append(
+                (
+                    "AG_TXN",
+                    pd.DataFrame({"from": [case_id] * len(txn_ids), "to": txn_ids}),
+                    "Transaction",
+                    "",
+                    {},
+                )
+            )
         if card_ids:
-            frames.append(("AG_CARD", pd.DataFrame({"from": [case_id] * len(card_ids), "to": card_ids}), "Card", "", {}))
+            frames.append(
+                ("AG_CARD", pd.DataFrame({"from": [case_id] * len(card_ids), "to": card_ids}), "Card", "", {})
+            )
         if device_ids:
-            frames.append(("AG_DEVICE", pd.DataFrame({"from": [case_id] * len(device_ids), "to": device_ids}), "DeviceProfile", "", {}))
+            frames.append(
+                (
+                    "AG_DEVICE",
+                    pd.DataFrame({"from": [case_id] * len(device_ids), "to": device_ids}),
+                    "DeviceProfile",
+                    "",
+                    {},
+                )
+            )
         for prior in prior_case_ids:
-            frames.append(("AG_SIMILAR", pd.DataFrame({"from": [case_id], "to": [prior], "score": [1.0]}), "ClosedCase", "score", {"score": "score"}))
+            frames.append(
+                (
+                    "AG_SIMILAR",
+                    pd.DataFrame({"from": [case_id], "to": [prior], "score": [1.0]}),
+                    "ClosedCase",
+                    "score",
+                    {"score": "score"},
+                )
+            )
         for etype, frame, target, _attribute_name, attributes in frames:
             conn.upsertEdgeDataFrame(
                 frame,
@@ -219,7 +257,9 @@ class Evidence:
                 attributes=attributes,
             )
         self.calls.append({"query": "write_agent_case+edges", "params": {"case_id": case_id}})
-        self.query_log.append({"query": "write_agent_case+edges", "params": {"case_id": case_id}, "result": case_id})
+        self.query_log.append(
+            {"query": "write_agent_case+edges", "params": {"case_id": case_id}, "result": case_id}
+        )
         return case_id
 
 

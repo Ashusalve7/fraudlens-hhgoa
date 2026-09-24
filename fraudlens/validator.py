@@ -5,6 +5,7 @@ uses local parquet/CSV artifacts when available and never opens a graph
 connection by default.  A caller may provide graph IDs or a graph-existence
 callback for an explicit integration check.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -14,14 +15,17 @@ import json
 import math
 import re
 import sys
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any
 
 HERE = Path(__file__).resolve().parent
 DATA = HERE.parent / "HHGOA_IEEE"
 CASES_DIR = HERE / "cases"
+ANSWER_SCHEMA_PATH = HERE / "schemas" / "answer.schema.json"
 
 PATTERN_ENUM = {
     "card_testing",
@@ -33,14 +37,32 @@ PATTERN_ENUM = {
     "none",
 }
 ACTIONS = {
-    "ALLOW_TRANSACTION", "DECLINE_TRANSACTION", "MONITOR_CARD", "MONITOR_CONNECTED_CARDS",
-    "WARN_CUSTOMER", "VERIFY_WITH_CUSTOMER", "STEP_UP_AUTH", "BLOCK_CARD", "BLOCK_ALL_CARDS",
-    "GENERATE_REPORT", "CREATE_CASE", "FILE_REPORT", "ESCALATE_TO_ANALYST", "CLOSE_NO_FRAUD",
+    "ALLOW_TRANSACTION",
+    "DECLINE_TRANSACTION",
+    "MONITOR_CARD",
+    "MONITOR_CONNECTED_CARDS",
+    "WARN_CUSTOMER",
+    "VERIFY_WITH_CUSTOMER",
+    "STEP_UP_AUTH",
+    "BLOCK_CARD",
+    "BLOCK_ALL_CARDS",
+    "GENERATE_REPORT",
+    "CREATE_CASE",
+    "FILE_REPORT",
+    "ESCALATE_TO_ANALYST",
+    "CLOSE_NO_FRAUD",
 }
 AUTO_ACTIONS = {
-    "ALLOW_TRANSACTION", "MONITOR_CARD", "MONITOR_CONNECTED_CARDS", "WARN_CUSTOMER",
-    "VERIFY_WITH_CUSTOMER", "STEP_UP_AUTH", "GENERATE_REPORT", "CREATE_CASE",
-    "ESCALATE_TO_ANALYST", "CLOSE_NO_FRAUD",
+    "ALLOW_TRANSACTION",
+    "MONITOR_CARD",
+    "MONITOR_CONNECTED_CARDS",
+    "WARN_CUSTOMER",
+    "VERIFY_WITH_CUSTOMER",
+    "STEP_UP_AUTH",
+    "GENERATE_REPORT",
+    "CREATE_CASE",
+    "ESCALATE_TO_ANALYST",
+    "CLOSE_NO_FRAUD",
 }
 REQUEST_TYPES = {"customer_validation", "step_up_auth", "analyst_info"}
 EVIDENCE_SOURCES = {"graph", "document", "customer", "external"}
@@ -48,14 +70,32 @@ STATUSES = {"open", "closed_fraud", "closed_legitimate", "escalated"}
 VERDICTS = {"fraud", "legitimate", "uncertain"}
 
 TOP_FIELDS = {
-    "case_id", "case", "evidence_requests", "next_best_actions", "sar",
-    "stop_reason", "tool_calls", "tokens", "latency_s",
+    "case_id",
+    "case",
+    "evidence_requests",
+    "next_best_actions",
+    "sar",
+    "stop_reason",
+    "tool_calls",
+    "tokens",
+    "latency_s",
 }
 CASE_FIELDS = {
-    "status", "verdict", "fraud_probability", "pattern", "pattern_description",
-    "affected_txn_ids", "first_suspicious_txn_id", "connected_card_ids",
-    "connected_device_profiles", "exposure_usd", "evidence", "similar_prior_cases",
-    "summary", "written_to_graph", "graph_case_id",
+    "status",
+    "verdict",
+    "fraud_probability",
+    "pattern",
+    "pattern_description",
+    "affected_txn_ids",
+    "first_suspicious_txn_id",
+    "connected_card_ids",
+    "connected_device_profiles",
+    "exposure_usd",
+    "evidence",
+    "similar_prior_cases",
+    "summary",
+    "written_to_graph",
+    "graph_case_id",
 }
 EVIDENCE_FIELDS = {"claim", "source", "ref", "entity_ids"}
 REQUEST_FIELDS = {"type", "asked_after_step", "assumed_response"}
@@ -68,29 +108,38 @@ def _dt(value: Any) -> datetime | None:
     if value in (None, "", "_NA_"):
         return None
     if isinstance(value, datetime):
-        return value
-    if hasattr(value, "to_pydatetime"):
+        parsed = value
+    elif hasattr(value, "to_pydatetime"):
         try:
-            result = value.to_pydatetime()
-            if isinstance(result, datetime):
-                return result
+            parsed = value.to_pydatetime()
         except Exception:
-            pass
+            return None
+        if not isinstance(parsed, datetime):
+            return None
+    else:
+        parsed = None
     text = str(value).strip()
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
     try:
-        return datetime.fromisoformat(text)
+        parsed = datetime.fromisoformat(text)
     except ValueError:
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
             try:
-                return datetime.strptime(text, fmt)
+                parsed = datetime.strptime(text, fmt)
+                break
             except ValueError:
-                pass
-    return None
+                continue
+        else:
+            return None
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(UTC).replace(tzinfo=None)
+    return parsed
 
 
 def _num(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
     try:
         result = float(value)
     except (TypeError, ValueError):
@@ -108,7 +157,10 @@ def _field(row: Mapping[str, Any] | None, *keys: str, default: Any = "") -> Any:
 
 
 def _sentences(text: str) -> list[str]:
-    return [part.strip() for part in re.split(r"[.!?]+", str(text or "")) if part.strip()]
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return []
+    return [part.strip() for part in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", cleaned) if part.strip()]
 
 
 def _action_key(action: Mapping[str, Any]) -> tuple[str, str]:
@@ -134,15 +186,13 @@ class ValidationContext:
             or text in self.customer_ids
             or text in self.device_ids
             or text in self.closed_case_ids
-            or text.startswith("CC-")
-            or text.startswith("AG-")
         )
 
     def txn(self, txn_id: str) -> dict[str, Any] | None:
         return self.txn_meta.get(str(txn_id))
 
     @classmethod
-    def from_repo(cls, root: Path = HERE, data: Path | None = None) -> "ValidationContext":
+    def from_repo(cls, root: Path = HERE, data: Path | None = None) -> ValidationContext:
         data = data or root.parent / "HHGOA_IEEE"
         context = cls()
         pack = data / "case_pack.csv"
@@ -161,7 +211,12 @@ class ValidationContext:
         if pd is not None:
             txn_path = root / "pipeline" / "out" / "load" / "v_Transaction.parquet"
             if txn_path.exists():
-                frame = pd.read_parquet(txn_path, columns=["txn_id", "ts", "amount", "card_id"] if _has_parquet_columns(txn_path, {"card_id"}) else ["txn_id", "ts", "amount"])
+                frame = pd.read_parquet(
+                    txn_path,
+                    columns=["txn_id", "ts", "amount", "card_id"]
+                    if _has_parquet_columns(txn_path, {"card_id"})
+                    else ["txn_id", "ts", "amount"],
+                )
                 for row in frame.to_dict("records"):
                     context.txn_meta[str(row["txn_id"])] = dict(row)
             card_path = root / "pipeline" / "out" / "card_map.parquet"
@@ -186,6 +241,7 @@ class ValidationContext:
 def _has_parquet_columns(path: Path, wanted: set[str]) -> bool:
     try:
         import pyarrow.parquet as pq
+
         return wanted.issubset(set(pq.ParquetFile(path).schema.names))
     except Exception:
         return False
@@ -199,6 +255,7 @@ def _load_device_ids(data: Path) -> set[str]:
     result: set[str] = set()
     try:
         import pandas as pd
+
         for frame in pd.read_csv(
             identity,
             usecols=["DeviceInfo", "id_30", "id_31", "id_33"],
@@ -212,6 +269,24 @@ def _load_device_ids(data: Path) -> set[str]:
     except Exception:
         return set()
     return result
+
+
+@lru_cache(maxsize=1)
+def _answer_schema_validator():
+    from jsonschema import Draft202012Validator, FormatChecker
+
+    schema = json.loads(ANSWER_SCHEMA_PATH.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema, format_checker=FormatChecker())
+
+
+def schema_problems(answer: Any) -> list[str]:
+    """Return deterministic strict-JSON-Schema findings for one answer."""
+    errors = sorted(
+        _answer_schema_validator().iter_errors(answer),
+        key=lambda error: (tuple(str(part) for part in error.absolute_path), error.message),
+    )
+    return [f"schema {path}: {error.message}" for error in errors for path in [error.json_path]]
 
 
 def _exact(problems: list[str], obj: Mapping[str, Any], allowed: set[str], label: str) -> None:
@@ -259,24 +334,34 @@ def _validate_evidence(
                     problems.append(f"{label} references unknown entity {entity}")
         lower = claim.lower()
         if source == "customer":
-            response_words = ("asked", "contacted", "confirmed", "denied", "recognized")
+            response_words = (
+                "asked",
+                "contacted",
+                "confirmed",
+                "denied",
+                "recognized",
+                "did not authorize",
+                "did not authorise",
+            )
             if any(word in lower for word in response_words) and not (has_request or explicit_denial):
-                problems.append(f"{label} claims a customer response without a request or explicit denial trigger")
-            if "confirmed" in lower or "recognized" in lower:
-                if not has_request:
-                    problems.append(f"{label} claims confirmation without an evidence request")
+                problems.append(
+                    f"{label} claims a customer response without a request or explicit denial trigger"
+                )
+            if ("confirmed" in lower or "recognized" in lower) and not has_request:
+                problems.append(f"{label} claims confirmation without an evidence request")
         if "get_device_neighborhood" in ref:
             if "device_id=" not in ref:
                 problems.append(f"{label} device evidence lacks an actual device_id query parameter")
             if not any(entity.startswith("DP-") for entity in entities):
                 problems.append(f"{label} device evidence lacks a device ID")
-        if "get_card_window" in ref or "get_customer_history" in ref or "get_region_activity" in ref:
-            if "start=" not in ref or "end=" not in ref:
-                problems.append(f"{label} query evidence lacks its actual time window")
+        if ("get_card_window" in ref or "get_customer_history" in ref or "get_region_activity" in ref) and (
+            "start=" not in ref or "end=" not in ref
+        ):
+            problems.append(f"{label} query evidence lacks its actual time window")
         if cutoff is not None:
             # Check ISO date/time values in refs.  A future end bound is a
             # temporal leak even if the underlying row happens to be valid.
-            for match in re.finditer(r"(?:start|end|opened_at)=([^\s,)]+)", ref):
+            for match in re.finditer(r"(?:start|end|opened_at)=([^,)]*)", ref):
                 value = _dt(match.group(1))
                 if value and value > cutoff:
                     problems.append(f"{label} query window extends beyond opened_at")
@@ -298,6 +383,7 @@ def _validate_actions(
     if not isinstance(actions, list):
         problems.append(f"{label} must be a list")
         return
+    seen_actions: set[str] = set()
     for index, action in enumerate(actions):
         item_label = f"{label}[{index}]"
         if not isinstance(action, Mapping):
@@ -310,6 +396,9 @@ def _validate_actions(
         if name not in ACTIONS:
             problems.append(f"{item_label} has unknown action {name!r}")
             continue
+        if name in seen_actions:
+            problems.append(f"{item_label} duplicates action {name}")
+        seen_actions.add(str(name))
         if name in AUTO_ACTIONS and route != "auto":
             problems.append(f"{item_label} {name} must use auto")
         if name == "DECLINE_TRANSACTION" and route != "L1":
@@ -317,29 +406,42 @@ def _validate_actions(
         if name == "BLOCK_CARD":
             expected = "L2" if exposure > 2500 else "L1"
             if route != expected:
-                problems.append(f"{item_label} BLOCK_CARD route must be {expected} at exposure ${exposure:,.2f}")
+                problems.append(
+                    f"{item_label} BLOCK_CARD route must be {expected} at exposure ${exposure:,.2f}"
+                )
         if name in {"BLOCK_ALL_CARDS", "FILE_REPORT"} and route != "L2":
             problems.append(f"{item_label} {name} must use L2")
-        if not re.search(r"(?:^|\\b)(?:R\\d+|3a|policy\\b)", reason, re.IGNORECASE):
-            problems.append(f"{item_label} reason does not cite a policy rule")
+        rule_numbers = [int(value) for value in re.findall(r"\bR(\d+)\b", reason, re.IGNORECASE)]
+        has_policy_citation = bool(rule_numbers or re.search(r"\b3a\b|\bpolicy\b", reason, re.IGNORECASE))
+        if not has_policy_citation or any(number not in range(1, 11) for number in rule_numbers):
+            problems.append(f"{item_label} reason does not cite policy R1-R10, 3a, or policy")
         lower = reason.lower()
         if name == "BLOCK_CARD":
+            if verdict == "legitimate":
+                problems.append(f"{item_label} blocks a card in a legitimate verdict")
             testing_clear = pattern == "card_testing" and "over $100" in lower
             denial = explicit_denial or (has_request and "deni" in evidence_text.lower())
-            corroborated = connected_fraud or "confirmed fraud" in evidence_text.lower() or "corroborat" in evidence_text.lower()
+            corroborated = (
+                connected_fraud
+                or "confirmed fraud" in evidence_text.lower()
+                or "corroborat" in evidence_text.lower()
+            )
             if not (testing_clear or denial or corroborated):
                 problems.append(f"{item_label} blocks a card without denial, testing, or corroborated fraud")
-        if name == "BLOCK_ALL_CARDS" and not (connected_fraud and evidence_text):
+        credential_evidence = "credential" in evidence_text.lower()
+        if name == "BLOCK_ALL_CARDS" and not ((connected_fraud and evidence_text) or credential_evidence):
             problems.append(f"{item_label} BLOCK_ALL_CARDS lacks multi-card/credential evidence")
-        if name == "MONITOR_CONNECTED_CARDS" and not evidence_text:
-            problems.append(f"{item_label} monitors connected cards without graph evidence")
+        if name == "MONITOR_CONNECTED_CARDS" and not connected_fraud:
+            problems.append(f"{item_label} monitors connected cards without corroborated graph fraud")
     if pattern == "card_testing":
         names = {a.get("action") for a in actions if isinstance(a, Mapping)}
         if not ({"DECLINE_TRANSACTION", "STEP_UP_AUTH"} & names) and "BLOCK_CARD" not in names:
             problems.append(f"{label} card-testing actions do not implement R5")
     if pattern == "undocumented":
         names = {a.get("action") for a in actions if isinstance(a, Mapping)}
-        if "FILE_REPORT" in names and not ("coordinated" in evidence_text.lower() or "repeated abuse" in evidence_text.lower()):
+        if "FILE_REPORT" in names and not (
+            "coordinated" in evidence_text.lower() or "repeated abuse" in evidence_text.lower()
+        ):
             problems.append(f"{label} files an undocumented pattern without coordinated/repeated evidence")
 
 
@@ -362,10 +464,20 @@ def _validate_sar(
     if not isinstance(sar.get("file"), bool):
         problems.append("sar.file must be boolean")
         return
+    reason = str(sar.get("reason", ""))
+    if not re.search(r"\bR(?:10|[1-9])\b|\b3a\b|\bpolicy\b", reason, re.IGNORECASE):
+        problems.append("SAR reason does not cite policy R1-R10, 3a, or policy")
     if not sar["file"]:
-        if sar.get("narrative") != "" or sar.get("subjects") != [] or sar.get("total_amount_usd") != 0 or sar.get("activity_dates") != []:
+        if (
+            sar.get("narrative") != ""
+            or sar.get("subjects") != []
+            or sar.get("total_amount_usd") != 0
+            or sar.get("activity_dates") != []
+        ):
             problems.append("SAR false object must have empty narrative/subjects/amount/dates")
         return
+    if not affected:
+        problems.append("filed SAR must identify an affected transaction episode")
     narrative = str(sar.get("narrative", ""))
     sentences = _sentences(narrative)
     if not 6 <= len(sentences) <= 12:
@@ -380,7 +492,11 @@ def _validate_sar(
     if _num(sar.get("total_amount_usd")) is None or abs(float(sar["total_amount_usd"]) - exposure) > 0.01:
         problems.append("SAR total_amount_usd does not equal case exposure")
     dates = sar.get("activity_dates")
-    if not isinstance(dates, list) or len(dates) != 2 or any(not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(v)) for v in dates):
+    if (
+        not isinstance(dates, list)
+        or len(dates) != 2
+        or any(not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(v)) for v in dates)
+    ):
         problems.append("SAR activity_dates must contain two YYYY-MM-DD dates")
     else:
         actual_dates = []
@@ -392,19 +508,31 @@ def _validate_sar(
         if actual_dates and dates != [min(actual_dates), max(actual_dates)]:
             problems.append("SAR activity_dates are not the actual episode min/max dates")
     lower = narrative.lower()
-    if ("$1,000" in lower or "1000" in lower or "exceed" in lower or "threshold" in lower) and exposure <= 1000:
+    if (
+        "$1,000" in lower or "1000" in lower or "exceed" in lower or "threshold" in lower
+    ) and exposure <= 1000:
         problems.append("SAR makes an exposure-threshold claim without exposure above $1,000")
-    if re.search(r"(?:shared|connected|another card|ring|corroborat).{0,45}(?:fraud|abuse)", lower) and not connected_fraud:
+    if (
+        re.search(r"(?:shared|connected|another card|ring|corroborat).{0,45}(?:fraud|abuse)", lower)
+        and not connected_fraud
+    ):
         problems.append("SAR shared-link claim lacks corroborated connected fraud")
-    if any(word in lower for word in ("asked", "contacted", "confirmed", "denied", "recognized")):
+    if any(
+        word in lower
+        for word in (
+            "asked",
+            "contacted",
+            "confirmed",
+            "denied",
+            "recognized",
+            "did not authorize",
+            "did not authorise",
+        )
+    ):
         if not (has_request or explicit_denial):
             problems.append("SAR customer-response claim lacks a request or explicit denial trigger")
         if ("confirmed" in lower or "recognized" in lower) and not has_request:
             problems.append("SAR confirmation claim lacks an evidence request")
-    if connected_fraud and not any(v.startswith("DP-") for v in (subjects or [])):
-        # A shared card can be the corroborated subject; do not require a device
-        # if the graph evidence did not expose one.
-        pass
 
 
 def validate_answer(
@@ -419,7 +547,8 @@ def validate_answer(
     context = context or ValidationContext(case_rows={str(case_row.get("case_id")): dict(case_row)})
     problems: list[str] = []
     if not isinstance(answer, Mapping):
-        return ["answer must be an object"]
+        return ["answer must be an object", *schema_problems(answer)]
+    problems.extend(schema_problems(answer))
     _exact(problems, answer, TOP_FIELDS, "top-level")
     case_id = str(case_row.get("case_id", ""))
     if answer.get("case_id") != case_id:
@@ -464,24 +593,30 @@ def validate_answer(
         if not context.valid_id(tid):
             problems.append(f"affected transaction {tid} is not a dataset ID")
     first = case.get("first_suspicious_txn_id")
+    if flagged and not context.valid_id(flagged):
+        problems.append(f"flagged transaction {flagged} is not a dataset ID")
+    exposure_value = _num(case.get("exposure_usd"))
+    if exposure_value is None or exposure_value < 0:
+        problems.append("exposure_usd must be a non-negative finite number")
     if verdict == "fraud":
         if flagged not in affected:
             problems.append("fraud episode does not include the flagged transaction")
         if not affected or first not in affected:
             problems.append("fraud episode has no valid first_suspicious_txn_id")
-        if _num(case.get("exposure_usd")) is None or _num(case.get("exposure_usd")) < 0:
-            problems.append("fraud exposure_usd is invalid")
-        else:
-            total = 0.0
-            for tid in affected:
-                meta = context.txn(tid)
-                if meta:
-                    total += abs(float(meta.get("amount", 0) or 0))
-            if affected and any(context.txn(tid) for tid in affected) and abs(total - float(case["exposure_usd"])) > 0.01:
-                problems.append("exposure_usd does not equal the sum of affected transaction amounts")
-    if verdict == "legitimate":
-        if affected or first or float(case.get("exposure_usd", 0) or 0) != 0 or case.get("pattern") != "none":
-            problems.append("legitimate case must have empty episode, zero exposure, and pattern none")
+    if affected and exposure_value is not None:
+        total = 0.0
+        known_rows = 0
+        for tid in affected:
+            meta = context.txn(tid)
+            if meta:
+                known_rows += 1
+                total += abs(_num(meta.get("amount")) or 0.0)
+        if known_rows and abs(total - exposure_value) > 0.01:
+            problems.append("exposure_usd does not equal the sum of affected transaction amounts")
+    if verdict == "legitimate" and (
+        affected or first or exposure_value != 0 or case.get("pattern") != "none"
+    ):
+        problems.append("legitimate case must have empty episode, zero exposure, and pattern none")
     if affected and flagged not in affected and verdict != "legitimate":
         problems.append("non-empty episode must include the flagged transaction")
     if first and first not in affected:
@@ -492,16 +627,24 @@ def validate_answer(
         if first_ts and any(ts and ts < first_ts for ts in timestamps):
             problems.append("first_suspicious_txn_id is not the earliest affected transaction")
     opened = _dt(case_row.get("opened_at"))
+    expected_card = str(case_row.get("card_id", ""))
     for tid in affected:
         meta = context.txn(str(tid))
         ts = _dt(meta.get("ts")) if meta else None
         if opened and ts and ts > opened:
             problems.append(f"affected transaction {tid} is after opened_at")
+        meta_card = str(_field(meta, "card_id", "CardID", default="")) if meta else ""
+        if expected_card and meta_card and meta_card != expected_card:
+            problems.append(f"affected transaction {tid} belongs to {meta_card}, not {expected_card}")
 
     connected_cards = case.get("connected_card_ids")
     connected_devices = case.get("connected_device_profiles")
     similar = case.get("similar_prior_cases")
-    for name, values in (("connected_card_ids", connected_cards), ("connected_device_profiles", connected_devices), ("similar_prior_cases", similar)):
+    for name, values in (
+        ("connected_card_ids", connected_cards),
+        ("connected_device_profiles", connected_devices),
+        ("similar_prior_cases", similar),
+    ):
         if not isinstance(values, list) or any(not isinstance(v, str) for v in values):
             problems.append(f"case.{name} must be a list of strings")
         else:
@@ -530,6 +673,15 @@ def validate_answer(
     if not isinstance(requests, list):
         problems.append("evidence_requests must be a list")
         requests = []
+    explicit_denial = str(case_row.get("trigger_type", "")).strip().lower() == "customer_report"
+    _validate_evidence(
+        case.get("evidence"),
+        problems,
+        context,
+        has_request=bool(requests),
+        explicit_denial=explicit_denial,
+        cutoff=opened,
+    )
     tool_calls = answer.get("tool_calls")
     if not isinstance(tool_calls, int) or isinstance(tool_calls, bool) or tool_calls < 0:
         problems.append("tool_calls must be a non-negative integer")
@@ -549,7 +701,10 @@ def validate_answer(
         step = request.get("asked_after_step")
         if not isinstance(step, int) or isinstance(step, bool) or step < 0 or step > tool_calls:
             problems.append(f"{label}.asked_after_step must be a per-case integer within tool_calls")
-        if not isinstance(request.get("assumed_response"), str) or not request.get("assumed_response", "").strip():
+        if (
+            not isinstance(request.get("assumed_response"), str)
+            or not request.get("assumed_response", "").strip()
+        ):
             problems.append(f"{label} must record an assumed response")
 
     nba = answer.get("next_best_actions")
@@ -558,20 +713,44 @@ def validate_answer(
         nba = {}
     else:
         _exact(problems, nba, NBA_FIELDS, "next_best_actions")
-    evidence_text = " ".join(str(e.get("claim", "")) for e in case.get("evidence", []) if isinstance(e, Mapping))
-    explicit_denial = str(case_row.get("trigger_type", "")) == "customer_report"
+    evidence_value = case.get("evidence")
+    evidence_items = evidence_value if isinstance(evidence_value, list) else []
+    evidence_text = " ".join(
+        str(item.get("claim", "")) for item in evidence_items if isinstance(item, Mapping)
+    )
     has_request = bool(requests)
-    connected_fraud = bool(re.search(r"(?:confirmed|corroborat|another card).{0,50}(?:fraud|abuse)", evidence_text, re.IGNORECASE))
-    exposure = float(case.get("exposure_usd", 0) or 0)
+    request_text = " ".join(
+        str(request.get("assumed_response", "")) for request in requests if isinstance(request, Mapping)
+    )
+    explicit_denial = explicit_denial or bool(
+        re.search(r"\bdeni(?:ed|al)|\bdid not authori[sz]e\b", request_text, re.IGNORECASE)
+    )
+    connected_fraud = bool(
+        re.search(
+            r"(?:confirmed|corroborat|another card).{0,50}(?:fraud|abuse)",
+            evidence_text,
+            re.IGNORECASE,
+        )
+    )
+    exposure = exposure_value if exposure_value is not None else 0.0
     for part in ("initial", "final"):
         _validate_actions(
-            nba.get(part, []), problems, label=f"next_best_actions.{part}", exposure=exposure,
-            verdict=str(verdict), pattern=str(case.get("pattern")), evidence_text=evidence_text,
-            has_request=has_request, explicit_denial=explicit_denial, connected_fraud=connected_fraud,
+            nba.get(part, []),
+            problems,
+            label=f"next_best_actions.{part}",
+            exposure=exposure,
+            verdict=str(verdict),
+            pattern=str(case.get("pattern")),
+            evidence_text=evidence_text,
+            has_request=has_request,
+            explicit_denial=explicit_denial,
+            connected_fraud=connected_fraud,
         )
     initial_actions = nba.get("initial", []) if isinstance(nba.get("initial", []), list) else []
     final_actions = nba.get("final", []) if isinstance(nba.get("final", []), list) else []
-    changed = action_diff = {_action_key(a) for a in initial_actions if isinstance(a, Mapping)} != {_action_key(a) for a in final_actions if isinstance(a, Mapping)}
+    changed = tuple(
+        _action_key(action) for action in initial_actions if isinstance(action, Mapping)
+    ) != tuple(_action_key(action) for action in final_actions if isinstance(action, Mapping))
     what = nba.get("what_changed")
     if not isinstance(what, str):
         problems.append("what_changed must be a string")
@@ -581,15 +760,26 @@ def validate_answer(
         problems.append("actions are unchanged but what_changed is not nothing")
     if not isinstance(answer.get("stop_reason"), str) or not answer.get("stop_reason", "").strip():
         problems.append("stop_reason must be a non-empty string")
-    if not isinstance(answer.get("tokens"), int) or isinstance(answer.get("tokens"), bool) or answer.get("tokens", -1) < 0:
+    if (
+        not isinstance(answer.get("tokens"), int)
+        or isinstance(answer.get("tokens"), bool)
+        or answer.get("tokens", -1) < 0
+    ):
         problems.append("tokens must be a non-negative integer")
     if not _is_number(answer.get("latency_s")) or float(answer.get("latency_s", -1)) < 0:
         problems.append("latency_s must be a non-negative number")
 
     sar = answer.get("sar")
     _validate_sar(
-        sar, problems, context, case=case, affected=affected, exposure=exposure,
-        has_request=has_request, explicit_denial=explicit_denial, connected_fraud=connected_fraud,
+        sar,
+        problems,
+        context,
+        case=case,
+        affected=affected,
+        exposure=exposure,
+        has_request=has_request,
+        explicit_denial=explicit_denial,
+        connected_fraud=connected_fraud,
     )
     if isinstance(sar, Mapping) and isinstance(nba.get("final"), list):
         has_file = any(a.get("action") == "FILE_REPORT" for a in nba["final"] if isinstance(a, Mapping))
@@ -602,6 +792,8 @@ def validate_files(
     case_rows: Iterable[Mapping[str, Any]],
     answers_dir: Path = CASES_DIR,
     context: ValidationContext | None = None,
+    *,
+    expected_tool_calls: Mapping[str, int] | None = None,
 ) -> dict[str, list[str]]:
     context = context or ValidationContext.from_repo()
     result: dict[str, list[str]] = {}
@@ -617,7 +809,12 @@ def validate_files(
         except Exception as exc:
             result[case_id] = [f"invalid JSON: {exc}"]
             continue
-        result[case_id] = validate_answer(answer, case, context)
+        result[case_id] = validate_answer(
+            answer,
+            case,
+            context,
+            expected_tool_calls=(expected_tool_calls or {}).get(case_id),
+        )
     return result
 
 
@@ -625,7 +822,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate FraudLens answers semantically")
     parser.add_argument("--cases-dir", type=Path, default=CASES_DIR)
     parser.add_argument("--data-dir", type=Path, default=DATA)
-    parser.add_argument("--check-graph", action="store_true", help="reserved for an explicitly injected graph checker; local validation never connects")
+    parser.add_argument(
+        "--check-graph",
+        action="store_true",
+        help="reserved for an explicitly injected graph checker; local validation never connects",
+    )
     args = parser.parse_args(argv)
     pack = args.data_dir / "case_pack.csv"
     if not pack.exists():
@@ -637,7 +838,9 @@ def main(argv: list[str] | None = None) -> int:
     findings = validate_files(rows, args.cases_dir, context)
     problems = [(case_id, problem) for case_id, items in findings.items() for problem in items]
     if args.check_graph:
-        print("Graph checks are not run by the local validator; provide graph_case_ids/callback in the API for an integration check.")
+        print(
+            "Graph checks are not run by the local validator; provide graph_case_ids/callback in the API for an integration check."
+        )
     if problems:
         print(f"{len(problems)} PROBLEMS:")
         for case_id, problem in problems:
@@ -649,6 +852,7 @@ def main(argv: list[str] | None = None) -> int:
 
 __all__ = [
     "ACTIONS",
+    "ANSWER_SCHEMA_PATH",
     "CASE_FIELDS",
     "EVIDENCE_FIELDS",
     "PATTERN_ENUM",
@@ -656,6 +860,7 @@ __all__ = [
     "SAR_FIELDS",
     "TOP_FIELDS",
     "ValidationContext",
+    "schema_problems",
     "validate_answer",
     "validate_files",
 ]

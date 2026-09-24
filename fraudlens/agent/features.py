@@ -4,14 +4,17 @@ Every timestamp-sensitive feature is bounded by the case's ``opened_at`` when
 one is supplied.  The function accepts the old Evidence-shaped arguments and
 also tolerates the normalized row dictionaries used by unit tests.
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
 from math import isfinite
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 try:  # package import
     from .episodes import (
+        is_match_anomaly,
         is_new_device,
         is_proxy,
         parse_ts,
@@ -24,6 +27,7 @@ try:  # package import
     )
 except ImportError:  # runner.py adds agent/ to sys.path and imports top-level
     from episodes import (  # type: ignore
+        is_match_anomaly,
         is_new_device,
         is_proxy,
         parse_ts,
@@ -100,9 +104,8 @@ def compute_features(
     visible = rows_at_cutoff(source_rows, limit)
     # The context is authoritative for the trigger.  A graph adapter can omit
     # it from a card-window response, so add it after applying the cutoff.
-    if txn_id(txn) and not any(txn_id(r) == txn_id(txn) for r in visible):
-        if t0 <= limit:
-            visible.append(dict(txn))
+    if txn_id(txn) and not any(txn_id(r) == txn_id(txn) for r in visible) and t0 <= limit:
+        visible.append(dict(txn))
     visible.sort(key=lambda r: (txn_ts(r) or datetime.max, txn_id(r)))
 
     near_start = t0 - timedelta(hours=24)
@@ -111,7 +114,6 @@ def compute_features(
     prior30_start = t0 - timedelta(days=30)
     hist30 = [r for r in visible if _within(txn_ts(r), prior30_start, t0) and txn_ts(r) != t0]
     hist60 = [r for r in visible if _within(txn_ts(r), t0 - timedelta(days=60), t0) and txn_ts(r) != t0]
-    prior = [r for r in visible if txn_ts(r) is not None and txn_ts(r) < t0]
     w1h = [r for r in visible if _within(txn_ts(r), t0 - timedelta(hours=1), t0)]
 
     amount = txn_amount(txn)
@@ -122,10 +124,7 @@ def compute_features(
     prior_products = {str(_field(r, "product_cd", "ProductCD", default="")) for r in hist30}
     product_new = int(bool(hist30) and product not in prior_products)
 
-    small_auth = [
-        r for r in w1h
-        if txn_channel(r) == "online" and txn_amount(r) < 5.0
-    ]
+    small_auth = [r for r in w1h if txn_channel(r) == "online" and txn_amount(r) < 5.0]
     near_online = [r for r in near if txn_channel(r) == "online"]
     new_share = _mean([1.0 if is_new_device(r) else 0.0 for r in near_online], 0.0)
     proxy_share = _mean([1.0 if is_proxy(r) else 0.0 for r in near_online], 0.0)
@@ -135,10 +134,7 @@ def compute_features(
     dev = dict(dev or {})
     device_cards: set[str] = set()
     for row in dev.get("cards", []) or []:
-        if isinstance(row, Mapping):
-            value = _field(row, "card_id", "id", "v_id", default="")
-        else:
-            value = row
+        value = _field(row, "card_id", "id", "v_id", default="") if isinstance(row, Mapping) else row
         if value not in (None, "", "_NA_"):
             device_cards.add(str(value))
     for row in dev.get("txns", []) or []:
@@ -147,41 +143,51 @@ def compute_features(
             if value not in (None, "", "_NA_"):
                 device_cards.add(str(value))
     own_card = str(_field(txn, "card_id", "cardId", default=""))
+    card_context = ctx.get("card")
+    if not own_card and isinstance(card_context, Mapping):
+        own_card = str(_field(card_context, "card_id", "id", default=""))
     if not own_card:
         own_card = str(_field(ctx, "card_id", default=""))
     device_cards.discard(own_card)
+    reported_other_cards: int | None = None
     if not device_cards and dev.get("n_cards") is not None:
-        device_cards = {f"reported-card-{i}" for i in range(max(_int(dev.get("n_cards")) - 1, 0))}
+        reported_other_cards = max(_int(dev.get("n_cards")) - 1, 0)
     device_customers: set[str] = set()
     for row in dev.get("customers", []) or []:
-        if isinstance(row, Mapping):
-            value = _field(row, "customer_id", "id", "v_id", default="")
-        else:
-            value = row
+        value = _field(row, "customer_id", "id", "v_id", default="") if isinstance(row, Mapping) else row
         if value not in (None, "", "_NA_"):
             device_customers.add(str(value))
     prior_cases = [dict(r) for r in (dev.get("prior_cases", []) or []) if isinstance(r, Mapping)]
     connected_fraud_cases = [
-        r for r in prior_cases
-        if str(_field(r, "outcome", default="")).lower() == "confirmed_fraud"
+        r for r in prior_cases if str(_field(r, "outcome", default="")).lower() == "confirmed_fraud"
     ]
-    connected_corroboration = bool(connected_fraud_cases and (len(device_cards) >= 1 or len(device_customers) >= 2))
+    device_card_count = len(device_cards) if device_cards else (reported_other_cards or 0)
+    connected_corroboration = bool(
+        connected_fraud_cases and (device_card_count >= 1 or len(device_customers) >= 2)
+    )
 
     region = str(_field(txn, "addr1", "region", default=""))
     prior_regions = {str(_field(r, "addr1", "region", default="")) for r in hist60}
     prior_regions.discard("")
     region_new = int(bool(region) and bool(hist60) and region not in prior_regions)
     after72 = [
-        r for r in visible
+        r
+        for r in visible
         if _within(txn_ts(r), t0, t0 + timedelta(hours=72))
         and str(_field(r, "addr1", "region", default="")) == region
     ]
-    home_active = int(any(
-        _within(txn_ts(r), t0 - timedelta(hours=72), min(t0 + timedelta(hours=72), limit))
-        and str(_field(r, "addr1", "region", default="")) not in {"", region}
+    home_active = int(
+        any(
+            _within(txn_ts(r), t0 - timedelta(hours=72), min(t0 + timedelta(hours=72), limit))
+            and str(_field(r, "addr1", "region", default="")) not in {"", region}
+            for r in visible
+        )
+    )
+    region_dates = {
+        txn_ts(r).date()
         for r in visible
-    ))
-    region_dates = {txn_ts(r).date() for r in visible if txn_ts(r) and str(_field(r, "addr1", "region", default="")) == region}
+        if txn_ts(r) and str(_field(r, "addr1", "region", default="")) == region
+    }
     region_days = (max(region_dates) - min(region_dates)).days + 1 if region_dates else 0
     trip_like = int(bool(home_active and region_days >= 3 and region_new))
 
@@ -193,39 +199,44 @@ def compute_features(
     p_emails = [p for p in p_emails if p and p not in {"_NA_", "nan"}]
     current_email = str(_field(txn, "p_email", "P_emaildomain", default=""))
     email_mode = _mode(p_emails)
-    email_changed = int(bool(current_email and current_email not in {"", "_NA_", "nan"} and current_email != email_mode))
+    email_changed = int(
+        bool(current_email and current_email not in {"", "_NA_", "nan"} and current_email != email_mode)
+    )
 
-    m_flags = str(_field(txn, "m_flags", "M_flags", default=""))
-    m1 = ""
-    for part in m_flags.split("|"):
-        if part.startswith("M1="):
-            m1 = part[3:]
-    m1_not_t = int(bool(m1) and m1 != "T")
+    m1_value = _field(txn, "M1", "m1", default=None)
+    if m1_value is None:
+        flags = str(_field(txn, "m_flags", "M_flags", default=""))
+        for part in flags.split("|"):
+            key, separator, value = part.partition("=")
+            if separator and key.strip().upper() == "M1":
+                m1_value = value
+                break
+    m1_not_t = int(m1_value not in (None, "", "_NA_") and is_match_anomaly({"M1": m1_value}))
 
     n_online_48h = sum(
-        1 for r in visible
-        if txn_channel(r) == "online" and _within(txn_ts(r), t0 - timedelta(hours=48), min(t0 + timedelta(hours=48), limit))
+        1
+        for r in visible
+        if txn_channel(r) == "online"
+        and _within(txn_ts(r), t0 - timedelta(hours=48), min(t0 + timedelta(hours=48), limit))
     )
     online_identity_anomaly = bool(flagged_new or flagged_proxy or new_share > 0 or proxy_share > 0)
     mixed_channel = int(len({txn_channel(r) for r in near}) >= 2)
     identity_anomaly = int(
-        online_identity_anomaly
-        or m1_not_t
-        or email_changed
-        or any(str(_field(r, "m_flags", default="")) for r in near)
+        online_identity_anomaly or m1_not_t or email_changed or any(is_match_anomaly(r) for r in near)
     )
     online_anomaly = int(
         n_online_48h >= 2
         and (amount_ratio >= 2.0 or product_new or online_shift >= 0.25 or online_identity_anomaly)
     )
     near_threshold = [
-        r for r in visible
-        if txn_channel(r) == "online" and 400.0 <= txn_amount(r) < 500.0
+        r
+        for r in visible
+        if txn_channel(r) == "online"
+        and 400.0 <= txn_amount(r) < 500.0
         and _within(txn_ts(r), t0 - timedelta(hours=1), min(t0 + timedelta(hours=1), limit))
     ]
     coordinated_signal = int(
-        connected_corroboration
-        and (len(device_cards) >= 2 or len(device_customers) >= 2)
+        connected_corroboration and (device_card_count >= 2 or len(device_customers) >= 2)
     )
 
     result: dict[str, Any] = {
@@ -238,7 +249,7 @@ def compute_features(
         "product_new": product_new,
         "new_dev_share_24h": new_share,
         "proxy_share_24h": proxy_share,
-        "device_shared_cards_7d": len(device_cards),
+        "device_shared_cards_7d": device_card_count,
         "region_new": region_new,
         "region_new_n_72h": len(after72),
         "home_active_72h": home_active,
@@ -256,7 +267,11 @@ def compute_features(
         "near_threshold_burst_40m": int(len(near_threshold) >= 3),
         "mixed_channel": mixed_channel,
         "identity_anomaly": identity_anomaly,
-        "ato_evidence": int(mixed_channel and identity_anomaly and (online_shift <= -0.25 or product_new or amount_ratio >= 2.0)),
+        "ato_evidence": int(
+            mixed_channel
+            and identity_anomaly
+            and (online_shift <= -0.25 or product_new or amount_ratio >= 2.0)
+        ),
         "region_days": region_days,
         "trip_like": trip_like,
         "oor_clone": int(region_new and home_active and not trip_like),
@@ -277,64 +292,129 @@ def episode_features(
     episode_rows: Iterable[Mapping[str, Any]],
     card_rows: Iterable[Mapping[str, Any]],
     t0_ts: datetime | str,
+    *,
+    cutoff: datetime | str | None = None,
 ) -> dict[str, Any]:
-    """Return pattern-specific signals for a candidate episode."""
+    """Return bounded pattern signals for a candidate episode.
+
+    Online-burst and identity signals use the documented 48-hour boundary;
+    near-threshold signals use 40 minutes.  ``cutoff`` prevents a caller that
+    passes a broad source table from reintroducing post-``opened_at`` rows.
+    """
     t0 = _dt(t0_ts)
-    episode = [dict(r) for r in episode_rows or []]
-    rows = [dict(r) for r in card_rows or []]
-    prior = [r for r in rows if t0 and txn_ts(r) and txn_ts(r) < t0]
-    online = [r for r in episode if txn_channel(r) == "online"]
-    small = [r for r in online if txn_amount(r) < 5.0]
+    limit = _dt(cutoff) if cutoff is not None else None
+    episode = [dict(row) for row in episode_rows or []]
+    rows = [dict(row) for row in card_rows or []]
+    if limit is not None:
+        episode = rows_at_cutoff(episode, limit)
+        rows = rows_at_cutoff(rows, limit)
+    ordered = sorted(
+        (row for row in episode if txn_ts(row) is not None),
+        key=lambda row: (txn_ts(row) or datetime.max, txn_id(row)),
+    )
+    online = [row for row in ordered if txn_channel(row) == "online"]
+    online_48h = [
+        row
+        for row in online
+        if t0 is None or abs((txn_ts(row) - t0).total_seconds()) <= timedelta(hours=48).total_seconds()
+    ]
+    small = [row for row in online if txn_amount(row) < 5.0]
     testing_sequence = False
     testing_large_amount = 0.0
-    if t0:
-        ordered = sorted((r for r in online if txn_ts(r)), key=txn_ts)
-        for i, start in enumerate(small):
+    if t0 is not None:
+        small_48h = [
+            row
+            for row in small
+            if abs((txn_ts(row) - t0).total_seconds()) <= timedelta(hours=48).total_seconds()
+        ]
+        for index, start in enumerate(small_48h):
             start_ts = txn_ts(start)
             if start_ts is None:
                 continue
-            cluster = [r for r in small[i:] if txn_ts(r) and (txn_ts(r) - start_ts).total_seconds() <= 3600]
+            cluster = [
+                row
+                for row in small_48h[index:]
+                if txn_ts(row) is not None
+                and (txn_ts(row) - start_ts).total_seconds() <= timedelta(hours=1).total_seconds()
+            ]
             if len(cluster) < 3:
                 continue
-            last = max(txn_ts(r) for r in cluster if txn_ts(r))
-            threshold = max(5.0, max(txn_amount(r) for r in cluster) * 1.25)
-            follow = [r for r in ordered if txn_ts(r) and last < txn_ts(r) <= last + timedelta(hours=24) and txn_amount(r) >= threshold]
+            last_ts = max(txn_ts(row) for row in cluster if txn_ts(row) is not None)
+            threshold = max(5.0, max(txn_amount(row) for row in cluster) * 1.25)
+            follow = [
+                row
+                for row in online_48h
+                if txn_ts(row) is not None
+                and last_ts < txn_ts(row) <= last_ts + timedelta(hours=24)
+                and txn_amount(row) >= threshold
+            ]
             if follow:
                 testing_sequence = True
-                testing_large_amount = max(txn_amount(r) for r in follow)
+                testing_large_amount = max(txn_amount(row) for row in follow)
                 break
-    regs = [str(_field(r, "addr1", "region", default="")) for r in episode]
-    regs = [r for r in regs if r]
-    prior_regs = [str(_field(r, "addr1", "region", default="")) for r in prior]
-    prior_share = 0.0
-    if regs and prior_regs:
-        prior_share = sum(1 for r in prior_regs if r in set(regs)) / len(prior_regs)
-    channels = {txn_channel(r) for r in episode}
-    near_identity = any(is_new_device(r) or is_proxy(r) or str(_field(r, "m_flags", default="")) for r in episode)
-    region = regs[0] if regs else ""
-    region_rows = [r for r in rows if str(_field(r, "addr1", "region", default="")) == region]
-    region_dates = {txn_ts(r).date() for r in region_rows if txn_ts(r)}
-    days = (max(region_dates) - min(region_dates)).days + 1 if region_dates else 0
-    home = any(str(_field(r, "addr1", "region", default="")) not in {"", region} for r in prior)
-    device = txn_device_id(episode[0]) if episode else ""
-    coordinated = any(
-        any(bool(r.get(k)) for k in ("coordinated", "connected_fraud", "same_ring"))
-        for r in episode
+
+    prior = [row for row in rows if t0 is not None and txn_ts(row) is not None and txn_ts(row) < t0]
+    region = next(
+        (value for row in ordered if (value := str(_field(row, "addr1", "region", default=""))) != ""),
+        "",
     )
+    prior_regions = [str(_field(row, "addr1", "region", default="")) for row in prior]
+    prior_share = (
+        sum(1 for value in prior_regions if value == region) / len(prior_regions)
+        if region and prior_regions
+        else 0.0
+    )
+    region_rows = [
+        row
+        for row in rows
+        if region
+        and txn_channel(row) == "in_person"
+        and str(_field(row, "addr1", "region", default="")) == region
+    ]
+    region_dates = {txn_ts(row).date() for row in region_rows if txn_ts(row) is not None}
+    days = (max(region_dates) - min(region_dates)).days + 1 if region_dates else 0
+    home = any(
+        txn_channel(row) == "in_person"
+        and str(_field(row, "addr1", "region", default="")) not in {"", region}
+        for row in prior
+    )
+    device = next((txn_device_id(row) for row in ordered if txn_device_id(row)), "")
+    coordinated = any(
+        any(bool(row.get(key)) for key in ("coordinated", "connected_fraud", "same_ring")) for row in episode
+    )
+    near_threshold = [
+        row
+        for row in online_48h
+        if 400.0 <= txn_amount(row) < 500.0
+        and t0 is not None
+        and abs((txn_ts(row) - t0).total_seconds()) <= timedelta(minutes=40).total_seconds()
+    ]
     return {
         "prior_reg_share": float(prior_share),
         "ep_online": (len(online) / len(episode)) if episode else 0.0,
         "n_small_in_episode": len(small),
-        "n_small_auth_1h": sum(1 for r in small if txn_ts(r) and t0 and abs((txn_ts(r) - t0).total_seconds()) <= 3600),
-        "n_online_48h": len(online),
-        "online_burst_48h": int(len(online) >= 2),
+        "n_small_auth_1h": sum(
+            1
+            for row in small
+            if txn_ts(row) is not None
+            and t0 is not None
+            and abs((txn_ts(row) - t0).total_seconds()) <= timedelta(hours=1).total_seconds()
+        ),
+        "n_online_48h": len(online_48h),
+        "online_burst_48h": int(len(online_48h) >= 2),
         "testing_sequence": testing_sequence,
         "testing_large_amount": testing_large_amount,
-        "new_device_share": (sum(1 for r in online if is_new_device(r)) / len(online)) if online else 0.0,
-        "proxy_share": (sum(1 for r in online if is_proxy(r)) / len(online)) if online else 0.0,
-        "mixed_channel": int(len(channels) >= 2),
-        "identity_anomaly": int(near_identity),
-        "near_threshold_burst_40m": int(sum(1 for r in online if 400 <= txn_amount(r) < 500) >= 3),
+        "new_device_share": (
+            sum(1 for row in online_48h if is_new_device(row)) / len(online_48h) if online_48h else 0.0
+        ),
+        "proxy_share": (
+            sum(1 for row in online_48h if is_proxy(row)) / len(online_48h) if online_48h else 0.0
+        ),
+        "mixed_channel": int(len({txn_channel(row) for row in online_48h}) >= 2),
+        "identity_anomaly": int(
+            any(is_new_device(row) or is_proxy(row) or is_match_anomaly(row) for row in online_48h)
+        ),
+        "near_threshold_burst_40m": int(len(near_threshold) >= 3),
         "region_days": days,
         "home_active": int(home),
         "trip_like": int(bool(home and days >= 3)),

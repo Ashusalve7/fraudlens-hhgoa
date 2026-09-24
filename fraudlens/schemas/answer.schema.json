@@ -95,8 +95,20 @@
         },
         "summary": { "type": "string", "minLength": 1 },
         "written_to_graph": { "type": "boolean" },
-        "graph_case_id": { "type": "string", "minLength": 1 }
-      }
+        "graph_case_id": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "pattern": { "const": "undocumented" } } },
+          "then": { "properties": { "pattern_description": { "type": "string", "minLength": 20 } } },
+          "else": { "properties": { "pattern_description": { "const": "" } } }
+        },
+        {
+          "if": { "properties": { "written_to_graph": { "const": true } } },
+          "then": { "properties": { "graph_case_id": { "type": "string", "minLength": 1 } } },
+          "else": { "properties": { "graph_case_id": { "const": "" } } }
+        }
+      ]
     },
     "evidence": {
       "type": "object",
@@ -155,8 +167,8 @@
       "additionalProperties": false,
       "required": ["initial", "final", "what_changed"],
       "properties": {
-        "initial": { "type": "array", "items": { "$ref": "#/$defs/action" } },
-        "final": { "type": "array", "items": { "$ref": "#/$defs/action" } },
+        "initial": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/action" } },
+        "final": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/action" } },
         "what_changed": { "type": "string", "minLength": 1 }
       }
     },
@@ -180,7 +192,27 @@
           "minItems": 0,
           "maxItems": 2
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "file": { "const": true } } },
+          "then": {
+            "properties": {
+              "narrative": { "type": "string", "minLength": 80 },
+              "subjects": { "minItems": 1 },
+              "activity_dates": { "minItems": 2, "maxItems": 2 }
+            }
+          },
+          "else": {
+            "properties": {
+              "narrative": { "const": "" },
+              "subjects": { "maxItems": 0 },
+              "total_amount_usd": { "const": 0 },
+              "activity_dates": { "maxItems": 0 }
+            }
+          }
+        }
+      ]
     }
   }
 }

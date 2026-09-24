@@ -6,20 +6,31 @@ R1-R10, and renders the sponsor answer shape.  It does not make a channel-only
 fraud inference and it does not treat a simulated response as a replacement
 calibrator score.
 """
+
 from __future__ import annotations
 
+import copy
 import json
 import sys
 import time
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "agent"))
 
-from evidence import Evidence  # noqa: E402
+from decision import (  # noqa: E402
+    Calibrator,
+    detect_pattern,
+    independent_evidence_count,
+    next_best_actions,
+    recurring_charge_details,
+    should_file_sar,
+    stop_reason,
+)
 from episodes import (  # noqa: E402
     build_episode,
     episode_bounds,
@@ -33,17 +44,8 @@ from episodes import (  # noqa: E402
     txn_id,
     txn_ts,
 )
+from evidence import Evidence  # noqa: E402
 from features import compute_features, episode_features  # noqa: E402
-from decision import (  # noqa: E402
-    Calibrator,
-    detect_pattern,
-    independent_evidence_count,
-    is_monthly_recurring,
-    next_best_actions,
-    recurring_charge_details,
-    should_file_sar,
-    stop_reason,
-)
 from sar import build_sar as _build_sar  # noqa: E402
 
 DATA = HERE.parent / "HHGOA_IEEE"
@@ -105,15 +107,36 @@ def _window(ev: Any, query_name: str) -> dict[str, str] | None:
 
 def load_case_pack() -> list[dict[str, Any]]:
     import csv
+
     with open(DATA / "case_pack.csv", newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+def select_cases(
+    cases: Iterable[Mapping[str, Any]],
+    selected_ids: Iterable[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Select a subset while preserving canonical case-pack order."""
+    if selected_ids is None:
+        return [dict(case) for case in cases]
+    wanted = {str(case_id).strip() for case_id in selected_ids if str(case_id).strip()}
+    return [dict(case) for case in cases if str(case.get("case_id", "")) in wanted]
+
+
+def normalize_answer(answer: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a non-mutating comparison form for full-pack versus subset runs."""
+    normalized = copy.deepcopy(dict(answer))
+    normalized["latency_s"] = 0.0
+    return normalized
 
 
 def _copy_row(row: Mapping[str, Any]) -> dict[str, Any]:
     return dict(row)
 
 
-def _ensure_flagged(rows: list[dict[str, Any]], flagged: Mapping[str, Any], cutoff: datetime) -> list[dict[str, Any]]:
+def _ensure_flagged(
+    rows: list[dict[str, Any]], flagged: Mapping[str, Any], cutoff: datetime
+) -> list[dict[str, Any]]:
     visible = rows_at_cutoff(rows, cutoff, flagged=flagged)
     fid = txn_id(flagged)
     if fid and not any(txn_id(row) == fid for row in visible):
@@ -136,13 +159,21 @@ def _scenario_text(kind: str, txn: Mapping[str, Any], similar_ids: list[str], re
     amount = txn_amount(txn)
     channel = txn_channel(txn)
     if kind == "denied":
-        basis = f"nearest similar closed cases: {', '.join(similar_ids)}" if similar_ids else "the calibrated prior"
+        basis = (
+            f"nearest similar closed cases: {', '.join(similar_ids)}"
+            if similar_ids
+            else "the calibrated prior"
+        )
         return (
             f"Simulated customer response: the customer states they did not authorize the {channel} "
             f"transaction of ${amount:,.2f}; the response assumption is based on {basis}."
         )
     if kind == "confirmed":
-        basis = f"nearest similar closed cases: {', '.join(similar_ids)}" if similar_ids else "the calibrated prior"
+        basis = (
+            f"nearest similar closed cases: {', '.join(similar_ids)}"
+            if similar_ids
+            else "the calibrated prior"
+        )
         return (
             f"Simulated customer response: the customer confirms the {channel} transaction of "
             f"${amount:,.2f}; the response assumption is based on {basis}."
@@ -151,7 +182,7 @@ def _scenario_text(kind: str, txn: Mapping[str, Any], similar_ids: list[str], re
 
 
 def _should_request(initial: list[dict[str, Any]], p: float, pattern: str, trigger: str) -> bool:
-    if trigger == "customer_report":
+    if trigger.strip().lower() == "customer_report":
         return False
     actions = {a.get("action") for a in initial}
     return "VERIFY_WITH_CUSTOMER" in actions and p < 0.85 and pattern != "card_testing"
@@ -163,28 +194,29 @@ def _simulate_response(p: float, pattern: str, similar_ids: list[str]) -> tuple[
         return "denied", "the calibrated prior leans toward unauthorized use"
     if p <= 0.35:
         return "confirmed", "the calibrated prior leans toward legitimate use"
-    return ("denied" if pattern in {"card_testing", "card_not_present_new_device", "undocumented"} else "confirmed",
-            "the case is near the decision boundary, so the scenario tests the higher-risk branch"
-            if pattern in {"card_testing", "card_not_present_new_device", "undocumented"}
-            else "the case is near the decision boundary, so the scenario tests the customer-confirmation branch")
+    return (
+        "denied"
+        if pattern in {"card_testing", "card_not_present_new_device", "undocumented"}
+        else "confirmed",
+        "the case is near the decision boundary, so the scenario tests the higher-risk branch"
+        if pattern in {"card_testing", "card_not_present_new_device", "undocumented"}
+        else "the case is near the decision boundary, so the scenario tests the customer-confirmation branch",
+    )
 
 
 def _shared_fact(dev: Mapping[str, Any], card_id: str, customer_id: str) -> dict[str, Any]:
     cards: list[str] = []
-    for row in (dev.get("cards", []) or []):
+    for row in dev.get("cards", []) or []:
         value = _field(row, "card_id", "id", default=row if isinstance(row, str) else "")
         if value and str(value) != card_id:
             cards.append(str(value))
     customers: list[str] = []
-    for row in (dev.get("customers", []) or []):
+    for row in dev.get("customers", []) or []:
         value = _field(row, "customer_id", "id", default=row if isinstance(row, str) else "")
         if value and str(value) != customer_id:
             customers.append(str(value))
     prior = [r for r in (dev.get("prior_cases", []) or []) if isinstance(r, Mapping)]
-    fraud_cases = [
-        r for r in prior
-        if str(_field(r, "outcome", default="")).lower() == "confirmed_fraud"
-    ]
+    fraud_cases = [r for r in prior if str(_field(r, "outcome", default="")).lower() == "confirmed_fraud"]
     corroborated = bool(fraud_cases and (cards or customers))
     return {
         "cards": sorted(set(cards)),
@@ -222,17 +254,28 @@ def _detector_context(
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
     """Build a bounded preliminary episode and the production feature context."""
     feats = compute_features(ctx, card_rows, dev, opened_at=cutoff)
-    # A small candidate cluster is enough to identify mixed-channel and pattern
-    # signals.  The final episode is rebuilt after detect_pattern.
-    candidate = build_episode(txn, card_rows, "none", feats, cutoff=cutoff)
-    ep = episode_features(candidate, card_rows, txn_ts(txn) or cutoff)
+    # Derive detector context from the bounded source window, not from a
+    # pattern-none episode (which contains only the trigger and hides testing
+    # or burst evidence).  The final fraud episode is rebuilt after detection.
+    visible = rows_at_cutoff(card_rows, cutoff, flagged=txn)
+    preliminary_ep = episode_features(visible, visible, txn_ts(txn) or cutoff, cutoff=cutoff)
+    candidate_pattern = "card_not_present_fraud" if txn_channel(txn) == "online" else "none"
+    candidate = build_episode(txn, visible, candidate_pattern, feats, cutoff=cutoff)
     for key in (
-        "n_online_48h", "online_burst_48h", "testing_sequence", "testing_large_amount",
-        "new_device_share", "proxy_share", "mixed_channel", "identity_anomaly",
-        "near_threshold_burst_40m", "trip_like", "coordinated",
+        "n_online_48h",
+        "online_burst_48h",
+        "testing_sequence",
+        "testing_large_amount",
+        "new_device_share",
+        "proxy_share",
+        "mixed_channel",
+        "identity_anomaly",
+        "near_threshold_burst_40m",
+        "trip_like",
+        "coordinated",
     ):
-        if key in ep:
-            feats[key] = ep[key]
+        if key in preliminary_ep:
+            feats[key] = preliminary_ep[key]
     if _field(txn, "id_15", default="") or is_new_device(txn):
         feats["new_device_flagged"] = 1
     if is_proxy(txn):
@@ -242,10 +285,8 @@ def _detector_context(
     if shared:
         feats["connected_fraud"] = bool(shared.get("corroborated"))
         feats["cross_customer"] = bool(shared.get("customers"))
-        feats["coordinated_signal"] = bool(
-            shared.get("corroborated") and len(shared.get("cards", [])) >= 1
-        )
-    return feats, candidate, ep
+        feats["coordinated_signal"] = bool(shared.get("corroborated") and len(shared.get("cards", [])) >= 1)
+    return feats, candidate, preliminary_ep
 
 
 def _query_windows(
@@ -255,10 +296,14 @@ def _query_windows(
     t0: datetime,
 ) -> dict[str, dict[str, str]]:
     return {
-        "card": _window(ev, "get_card_window") or {"start": _fmt_ts(opened_at - timedelta(days=60)), "end": _fmt_ts(opened_at)},
-        "customer": _window(ev, "get_customer_history") or {"start": _fmt_ts(opened_at - timedelta(days=400)), "end": _fmt_ts(opened_at)},
-        "device": _window(ev, "get_device_neighborhood") or {"start": _fmt_ts(opened_at - timedelta(days=7)), "end": _fmt_ts(opened_at)},
-        "region": _window(ev, "get_region_activity") or {"start": _fmt_ts(t0 - timedelta(days=7)), "end": _fmt_ts(opened_at)},
+        "card": _window(ev, "get_card_window")
+        or {"start": _fmt_ts(opened_at - timedelta(days=60)), "end": _fmt_ts(opened_at)},
+        "customer": _window(ev, "get_customer_history")
+        or {"start": _fmt_ts(opened_at - timedelta(days=400)), "end": _fmt_ts(opened_at)},
+        "device": _window(ev, "get_device_neighborhood")
+        or {"start": _fmt_ts(opened_at - timedelta(days=7)), "end": _fmt_ts(opened_at)},
+        "region": _window(ev, "get_region_activity")
+        or {"start": _fmt_ts(t0 - timedelta(days=7)), "end": _fmt_ts(opened_at)},
     }
 
 
@@ -295,7 +340,7 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
     # 2. Evidence queries: every end boundary is the case opening timestamp.
     card_start = min(t0 - timedelta(days=60), opened_at - timedelta(days=60))
     card_rows = list(ev.card_window(card_id, _fmt_ts(card_start), _fmt_ts(opened_at)))
-    history_cards, history_rows = ev.customer_history(
+    _history_cards, history_rows = ev.customer_history(
         customer_id,
         _fmt_ts(opened_at - timedelta(days=400)),
         _fmt_ts(opened_at),
@@ -304,21 +349,27 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         history_rows = list(card_rows)
     dev: dict[str, Any] = {"txns": [], "cards": [], "customers": [], "prior_cases": []}
     if device_id:
-        dev = dict(ev.device_neighborhood(
-            device_id,
-            _fmt_ts(opened_at - timedelta(days=7)),
-            _fmt_ts(opened_at),
-        ))
+        dev = dict(
+            ev.device_neighborhood(
+                device_id,
+                _fmt_ts(opened_at - timedelta(days=7)),
+                _fmt_ts(opened_at),
+            )
+        )
         dev.setdefault("device_id", device_id)
     region = str(_field(txn, "addr1", "region", default=""))
-    region_rows: list[dict[str, Any]] = []
     if region:
-        region_rows = list(ev.region_activity(
-            card_id,
-            region,
-            _fmt_ts(opened_at - timedelta(days=7)),
-            _fmt_ts(opened_at),
-        ))
+        # The result is intentionally not merged: card_window is the complete
+        # modeling source, while this bounded call records explicit region
+        # provenance without changing feature semantics.
+        list(
+            ev.region_activity(
+                card_id,
+                region,
+                _fmt_ts(opened_at - timedelta(days=7)),
+                _fmt_ts(opened_at),
+            )
+        )
     state.append("EVIDENCE_GATHERED")
 
     # Defensive client-side cutoff, including transaction and device events.
@@ -327,9 +378,13 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
     if isinstance(dev, dict):
         dev["txns"] = rows_at_cutoff(dev.get("txns", []) or [], opened_at)
         dev["prior_cases"] = [
-            r for r in (dev.get("prior_cases", []) or [])
+            r
+            for r in (dev.get("prior_cases", []) or [])
             if not _field(r, "opened_at", "closed_at", default=None)
-            or (_field(r, "opened_at", "closed_at", default=None) and dt(_field(r, "opened_at", "closed_at")) <= opened_at)
+            or (
+                _field(r, "opened_at", "closed_at", default=None)
+                and dt(_field(r, "opened_at", "closed_at")) <= opened_at
+            )
         ]
 
     # 3. Recurrence, shared corroboration, and pattern assessment ----------
@@ -358,7 +413,7 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         feats["recurring_r7"] = True
     if shared.get("corroborated"):
         feats["coordinated_signal"] = True
-    if str(case.get("trigger_type")) == "analyst_request" and shared.get("corroborated"):
+    if str(case.get("trigger_type", "")).strip().lower() == "analyst_request" and shared.get("corroborated"):
         # An analyst-requested shared-device investigation with a prior
         # confirmed case is the concrete R9 path, not a generic device claim.
         feats["coordinated_signal"] = True
@@ -378,14 +433,34 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
     episode = rows_at_cutoff(episode, opened_at, flagged=txn)
     if txn_id(txn) not in {txn_id(r) for r in episode}:
         episode.append(dict(txn))
-    episode = sorted({txn_id(r): r for r in episode if txn_id(r)}.values(), key=lambda r: (txn_ts(r) or datetime.max, txn_id(r)))
+    episode = sorted(
+        {txn_id(r): r for r in episode if txn_id(r)}.values(),
+        key=lambda r: (txn_ts(r) or datetime.max, txn_id(r)),
+    )
     ep_features = episode_features(episode, card_rows, t0)
     # Detector context can gain a more precise signal from the final episode.
-    feats.update({k: v for k, v in ep_features.items() if k in {
-        "testing_sequence", "n_online_48h", "online_burst_48h", "mixed_channel",
-        "identity_anomaly", "trip_like", "near_threshold_burst_40m", "coordinated",
-    }})
-    p_hist, p_initial = cal.score(feats)
+    feats.update(
+        {
+            k: v
+            for k, v in ep_features.items()
+            if k
+            in {
+                "testing_sequence",
+                "n_online_48h",
+                "online_burst_48h",
+                "mixed_channel",
+                "identity_anomaly",
+                "trip_like",
+                "near_threshold_burst_40m",
+                "coordinated",
+            }
+        }
+    )
+    _p_history, p_initial = cal.score(feats)
+    if explicit_denial:
+        # The report is supplied evidence, not a later interview.  Include its
+        # likelihood-ratio update in both initial and final probability.
+        p_initial = cal.update_for_response(p_initial, "denied")
     # If the graph supplied a corroborated ring, make the policy precondition
     # explicit without changing the model artifact.
     connected_fraud = bool(shared.get("corroborated"))
@@ -408,28 +483,48 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         # R7 asks for verification and does not block.  The confirmation below
         # is explicitly a scenario, not a hard probability rewrite.
         initial = next_best_actions(
-            p_initial, exposure_seed, "none", bool(shared.get("cards")),
-            customer_denied=False, customer_confirmed=False,
-            no_reply_24h=False, testing_cleared_over_100=False,
-            connected_fraud=connected_fraud, coordinated=False,
-            n_independent=_count_independent(episode, customer_denied=False, shared=shared, similar_rows=similar_cases),
+            p_initial,
+            exposure_seed,
+            "none",
+            bool(shared.get("cards")),
+            customer_denied=False,
+            customer_confirmed=False,
+            no_reply_24h=False,
+            testing_cleared_over_100=False,
+            connected_fraud=connected_fraud,
+            coordinated=False,
+            n_independent=_count_independent(
+                episode, customer_denied=False, shared=shared, similar_rows=similar_cases
+            ),
+            verdict="uncertain",
             r7=True,
         )
         scenario_kind = "confirmed"
         scenario_text = _scenario_text("confirmed", txn, similar_ids, "R7 approximately-monthly recurrence")
-        evidence_requests.append({
-            "type": "customer_validation",
-            "asked_after_step": _tool_count(ev),
-            "assumed_response": scenario_text,
-        })
+        evidence_requests.append(
+            {
+                "type": "customer_validation",
+                "asked_after_step": _tool_count(ev),
+                "assumed_response": scenario_text,
+            }
+        )
         p_final = cal.update_for_response(p_initial, "confirmed")
         customer_confirmed = True
         final = next_best_actions(
-            p_final, 0.0, "none", bool(shared.get("cards")),
-            customer_denied=False, customer_confirmed=True,
-            no_reply_24h=False, testing_cleared_over_100=False,
-            connected_fraud=connected_fraud, coordinated=False,
-            n_independent=_count_independent(episode, customer_denied=False, shared=shared, similar_rows=similar_cases),
+            p_final,
+            0.0,
+            "none",
+            bool(shared.get("cards")),
+            customer_denied=False,
+            customer_confirmed=True,
+            no_reply_24h=False,
+            testing_cleared_over_100=False,
+            connected_fraud=connected_fraud,
+            coordinated=False,
+            n_independent=_count_independent(
+                episode, customer_denied=False, shared=shared, similar_rows=similar_cases
+            ),
+            verdict="legitimate",
             r7=False,
         )
     else:
@@ -444,20 +539,27 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
             customer_denied=explicit_denial,
             customer_confirmed=False,
             no_reply_24h=False,
-            testing_cleared_over_100=bool(pattern == "card_testing" and any(txn_amount(r) > 100 for r in episode)),
+            testing_cleared_over_100=bool(
+                pattern == "card_testing" and any(txn_amount(r) > 100 for r in episode)
+            ),
             connected_fraud=connected_fraud,
             coordinated=coordinated,
             n_independent=n_independent_initial,
-            strong_fraud_evidence=bool(connected_fraud and pattern in {"card_not_present_new_device", "undocumented"}),
+            verdict="uncertain",
+            strong_fraud_evidence=bool(
+                connected_fraud and pattern in {"card_not_present_new_device", "undocumented"}
+            ),
         )
         if _should_request(initial, p_initial, pattern, str(case.get("trigger_type", ""))):
             scenario_kind, scenario_reason = _simulate_response(p_initial, pattern, similar_ids)
             scenario_text = _scenario_text(scenario_kind, txn, similar_ids, scenario_reason)
-            evidence_requests.append({
-                "type": "customer_validation",
-                "asked_after_step": _tool_count(ev),
-                "assumed_response": scenario_text,
-            })
+            evidence_requests.append(
+                {
+                    "type": "customer_validation",
+                    "asked_after_step": _tool_count(ev),
+                    "assumed_response": scenario_text,
+                }
+            )
             p_final = cal.update_for_response(p_initial, scenario_kind)
             customer_denied = scenario_kind == "denied"
             customer_confirmed = scenario_kind == "confirmed"
@@ -469,11 +571,18 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
             customer_denied=customer_denied,
             customer_confirmed=customer_confirmed,
             no_reply_24h=False,
-            testing_cleared_over_100=bool(pattern == "card_testing" and any(txn_amount(r) > 100 for r in episode)),
+            testing_cleared_over_100=bool(
+                pattern == "card_testing" and any(txn_amount(r) > 100 for r in episode)
+            ),
             connected_fraud=connected_fraud,
             coordinated=coordinated,
-            n_independent=_count_independent(episode, customer_denied=customer_denied, shared=shared, similar_rows=similar_cases),
-            strong_fraud_evidence=bool(connected_fraud and pattern in {"card_not_present_new_device", "undocumented"}),
+            n_independent=_count_independent(
+                episode, customer_denied=customer_denied, shared=shared, similar_rows=similar_cases
+            ),
+            verdict="fraud" if customer_denied else "uncertain",
+            strong_fraud_evidence=bool(
+                connected_fraud and pattern in {"card_not_present_new_device", "undocumented"}
+            ),
         )
     state.append("NBA_INITIAL" if not evidence_requests else "EVIDENCE_REQUESTED")
     if evidence_requests:
@@ -502,10 +611,14 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         output_pattern, output_exposure = "none", 0.0
     else:
         verdict, status = "uncertain", "escalated"
-        affected = [txn_id(txn)] if txn_id(txn) else []
-        first_suspicious = txn_id(txn) if affected else ""
         output_pattern = pattern
-        output_exposure = 0.0
+        if connected_fraud or coordinated:
+            affected = [txn_id(row) for row in episode if txn_id(row)]
+            first_suspicious = episode_bounds(episode)[0]
+            output_exposure = round(sum(txn_amount(row) for row in episode), 2)
+        else:
+            affected, first_suspicious = [], ""
+            output_exposure = 0.0
 
     connected_cards = list(shared.get("cards", [])) if connected_fraud or coordinated else []
     device_profiles = [device_id] if device_id and (connected_fraud or coordinated) else []
@@ -522,7 +635,9 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
     # a custom policy implementation, keep the answer internally consistent.
     final_actions = {a.get("action") for a in final}
     if sar_file and "FILE_REPORT" not in final_actions:
-        final.append({"action": "FILE_REPORT", "route": "L2", "reason": "3a: corroborated policy report basis"})
+        final.append(
+            {"action": "FILE_REPORT", "route": "L2", "reason": "3a: corroborated policy report basis"}
+        )
     if not sar_file and "FILE_REPORT" in final_actions:
         final = [a for a in final if a.get("action") != "FILE_REPORT"]
 
@@ -559,7 +674,7 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         connected_fraud=connected_fraud,
     )
     what_changed = describe_change(initial, final, customer_denied, customer_confirmed, p_initial, p_final)
-    stop, settled = stop_reason(p_final, n_independent, bool(evidence_requests))
+    stop, _settled = stop_reason(p_final, n_independent, bool(evidence_requests))
 
     graph_case_id = f"AG-{case_id}"
     written = False
@@ -668,43 +783,58 @@ def build_evidence(
     cutoff: datetime | str | None = None,
 ) -> list[dict[str, Any]]:
     """Render traceable claims using the exact rows and query windows supplied."""
-    rows = [dict(r) for r in ep_rows or []]
+    rows = [dict(row) for row in ep_rows or []]
+    if cutoff is not None:
+        rows = rows_at_cutoff(rows, cutoff)
+        if txn_ts(txn) is not None and txn_ts(txn) > dt(cutoff):
+            return []
+    similar_id_list = [str(value) for value in similar_ids or [] if value]
+    request_list = [dict(request) for request in evidence_requests or [] if isinstance(request, Mapping)]
     windows = dict(query_windows or {})
     result: list[dict[str, Any]] = []
     tid = txn_id(txn)
-    result.append({
-        "claim": (
-            f"Flagged transaction {tid}: ${txn_amount(txn):,.2f} {txn_channel(txn)} "
-            f"({_field(txn, 'product_cd', 'ProductCD', default='unknown')}) with model risk score "
-            f"{float(_field(txn, 'risk_score', default=0) or 0):.2f}; the score is an investigation input, not a verdict."
-        ),
-        "source": "graph",
-        "ref": f"query:get_transaction_context(txn_id={tid})",
-        "entity_ids": [tid] if tid else [],
-    })
+    result.append(
+        {
+            "claim": (
+                f"Flagged transaction {tid}: ${txn_amount(txn):,.2f} {txn_channel(txn)} "
+                f"({_field(txn, 'product_cd', 'ProductCD', default='unknown')}) with model risk score "
+                f"{float(_field(txn, 'risk_score', default=0) or 0):.2f}; the score is an investigation input, not a verdict."
+            ),
+            "source": "graph",
+            "ref": f"query:get_transaction_context(txn_id={tid})",
+            "entity_ids": [tid] if tid else [],
+        }
+    )
     if rows:
         start = windows.get("card", {}).get("start", "the retrieved card window")
         end = windows.get("card", {}).get("end", "the investigation cutoff")
-        result.append({
-            "claim": (
-                f"The card-window query from {start} through {end} returned {len(rows)} episode transaction(s) "
-                f"with absolute exposure ${sum(txn_amount(r) for r in rows):,.2f}; only anomaly-selected rows are included."
-            ),
-            "source": "graph",
-            "ref": f"query:get_card_window(start={start}, end={end})",
-            "entity_ids": [txn_id(r) for r in rows if txn_id(r)],
-        })
+        result.append(
+            {
+                "claim": (
+                    f"The bounded episode selected {len(rows)} transaction(s), totaling "
+                    f"${sum(txn_amount(r) for r in rows):,.2f}, from the card-window query run "
+                    f"from {start} through {end}."
+                ),
+                "source": "graph",
+                "ref": f"query:get_card_window(start={start}, end={end})",
+                "entity_ids": [txn_id(r) for r in rows if txn_id(r)],
+            }
+        )
     actual_device = str(device_id or _field(dev, "device_id", "id", default=""))
     if actual_device:
         dwin = windows.get("device", {})
-        dstart, dend = dwin.get("start", "the retrieved device window"), dwin.get("end", "the investigation cutoff")
+        dstart, dend = (
+            dwin.get("start", "the retrieved device window"),
+            dwin.get("end", "the investigation cutoff"),
+        )
         dev_cards = []
-        for item in (dev.get("cards", []) or []):
+        for item in dev.get("cards", []) or []:
             value = _field(item, "card_id", "id", default=item if isinstance(item, str) else "")
             if value:
                 dev_cards.append(str(value))
         prior_fraud = [
-            r for r in (dev.get("prior_cases", []) or [])
+            r
+            for r in (dev.get("prior_cases", []) or [])
             if str(_field(r, "outcome", default="")).lower() == "confirmed_fraud"
         ]
         claim = (
@@ -715,40 +845,65 @@ def build_evidence(
             claim += f" and {len(prior_fraud)} prior confirmed-fraud case(s), providing corroboration."
         else:
             claim += "; device reuse alone is not treated as connected fraud."
-        result.append({
-            "claim": claim,
-            "source": "graph",
-            "ref": f"query:get_device_neighborhood(device_id={actual_device}, start={dstart}, end={dend})",
-            "entity_ids": [actual_device, *dev_cards, *[str(_field(r, "case_id", default="")) for r in prior_fraud]],
-        })
-    if similar_ids:
-        result.append({
-            "claim": f"Retrieved {len(list(similar_ids))} nearest closed case(s) for pattern memory: {', '.join(similar_ids)}.",
-            "source": "graph",
-            "ref": f"query:find_similar_cases(pattern={pattern})",
-            "entity_ids": list(similar_ids),
-        })
+        prior_ids = [str(_field(row, "case_id", default="")) for row in prior_fraud]
+        result.append(
+            {
+                "claim": claim,
+                "source": "graph",
+                "ref": f"query:get_device_neighborhood(device_id={actual_device}, start={dstart}, end={dend})",
+                "entity_ids": [actual_device, *dev_cards, *[value for value in prior_ids if value]],
+            }
+        )
+    if similar_id_list:
+        result.append(
+            {
+                "claim": (
+                    f"Retrieved {len(similar_id_list)} nearest closed case(s) for pattern memory: "
+                    f"{', '.join(similar_id_list)}."
+                ),
+                "source": "graph",
+                "ref": f"query:find_similar_cases(pattern={pattern})",
+                "entity_ids": similar_id_list,
+            }
+        )
     if customer_report_denial:
-        result.append({
-            "claim": "The case trigger explicitly reports that the customer did not authorize the flagged transaction; no later interview is asserted.",
-            "source": "customer",
-            "ref": "trigger:customer_report",
-            "entity_ids": [tid] if tid else [],
-        })
-    for index, request in enumerate(evidence_requests or [], 1):
-        result.append({
-            "claim": f"Evidence request {index} recorded this explicitly simulated response: {request.get('assumed_response', '')}",
-            "source": "customer",
-            "ref": f"evidence_request:{index}",
-            "entity_ids": [],
-        })
+        result.append(
+            {
+                "claim": "The case trigger explicitly reports that the customer did not authorize the flagged transaction; no later interview is asserted.",
+                "source": "customer",
+                "ref": "trigger:customer_report",
+                "entity_ids": [tid] if tid else [],
+            }
+        )
+    for index, request in enumerate(request_list, 1):
+        result.append(
+            {
+                "claim": f"Evidence request {index} recorded this explicitly simulated response: {request.get('assumed_response', '')}",
+                "source": "customer",
+                "ref": f"evidence_request:{index}",
+                "entity_ids": [],
+            }
+        )
     if pattern == "undocumented" and pattern_why:
-        result.append({
-            "claim": pattern_why,
-            "source": "graph",
-            "ref": "query:coordinated_abundance_review",
-            "entity_ids": [tid] if tid else [],
-        })
+        if actual_device:
+            dwin = windows.get("device", {})
+            ref = (
+                "query:get_device_neighborhood("
+                f"device_id={actual_device}, start={dwin.get('start', 'the retrieved device window')}, "
+                f"end={dwin.get('end', 'the investigation cutoff')})"
+            )
+            source = "graph"
+        else:
+            ref = "agent/decision.py::detect_pattern"
+            source = "document"
+        result.append(
+            {
+                "claim": pattern_why,
+                "source": source,
+                "ref": ref,
+                "entity_ids": [value for value in (tid, actual_device) if value],
+            }
+        )
     # De-duplicate exact evidence objects while preserving query order.
     unique: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -780,25 +935,35 @@ def build_summary(
         "risk_score": f"the model scored transaction {txn_id(txn)} at {float(_field(txn, 'risk_score', default=0) or 0):.2f}",
         "customer_report": f"the customer reported an unauthorized purchase on transaction {txn_id(txn)}",
         "analyst_request": f"an analyst requested review of transaction {txn_id(txn)}",
-    }.get(str(case.get("trigger_type")), f"transaction {txn_id(txn)} triggered review")
+    }.get(str(case.get("trigger_type", "")).strip().lower(), f"transaction {txn_id(txn)} triggered review")
     sentences = [
         f"Alert {case.get('case_id')}: {trigger} (${txn_amount(txn):,.2f}, {txn_channel(txn)}).",
     ]
     if verdict == "fraud":
-        sentences.append(f"Investigation supports {pattern.replace('_', ' ')} with {len(affected)} transaction(s) in the bounded episode and ${exposure:,.2f} exposure.")
+        sentences.append(
+            f"Investigation supports {pattern.replace('_', ' ')} with {len(affected)} transaction(s) in the bounded episode and ${exposure:,.2f} exposure."
+        )
     elif verdict == "legitimate":
-        sentences.append("The available evidence is consistent with legitimate activity; no fraud episode is asserted.")
+        sentences.append(
+            "The available evidence is consistent with legitimate activity; no fraud episode is asserted."
+        )
     else:
-        sentences.append(f"The evidence remains uncertain with fraud probability {p_final:.2f}; the alert is escalated rather than treated as a confirmed fraud finding.")
+        sentences.append(
+            f"The evidence remains uncertain with fraud probability {p_final:.2f}; the alert is escalated rather than treated as a confirmed fraud finding."
+        )
     if denied:
         if customer_report_denial:
-            sentences.append("The case trigger itself explicitly reports the customer did not authorize the transaction.")
+            sentences.append(
+                "The case trigger itself explicitly reports the customer did not authorize the transaction."
+            )
         elif list(evidence_requests or []):
             sentences.append("The separately recorded customer evidence response denies the transaction.")
     elif confirmed:
         sentences.append("The separately recorded customer evidence response confirms the transaction.")
     if connected_fraud:
-        sentences.append("The graph neighborhood contains corroborated fraud on a connected card, not merely device reuse.")
+        sentences.append(
+            "The graph neighborhood contains corroborated fraud on a connected card, not merely device reuse."
+        )
     return " ".join(sentences)
 
 
@@ -806,17 +971,26 @@ def _action_key(action: Mapping[str, Any]) -> tuple[str, str]:
     return (str(action.get("action", "")), str(action.get("route", "")))
 
 
-def action_diff(initial: Iterable[Mapping[str, Any]], final: Iterable[Mapping[str, Any]]) -> dict[str, list[str]]:
-    """Return material action additions/removals/route changes."""
-    before = {_action_key(a): a for a in initial}
-    after = {_action_key(a): a for a in final}
-    added = sorted(after[key].get("action", "") for key in after if key not in before)
-    removed = sorted(before[key].get("action", "") for key in before if key not in after)
+def action_diff(
+    initial: Iterable[Mapping[str, Any]], final: Iterable[Mapping[str, Any]]
+) -> dict[str, list[str]]:
+    """Return material additions, removals, route changes, and reordering."""
+    before_list = [dict(action) for action in initial]
+    after_list = [dict(action) for action in final]
+    before = {str(action.get("action", "")): action for action in before_list}
+    after = {str(action.get("action", "")): action for action in after_list}
+    added = sorted(set(after) - set(before))
+    removed = sorted(set(before) - set(after))
     changed = sorted(
-        f"{before[key].get('action')} route {before[key].get('route')}→{after[key].get('route')}"
-        for key in before.keys() & after.keys()
-        if before[key].get("route") != after[key].get("route")
+        f"{name} route {before[name].get('route')}→{after[name].get('route')}"
+        for name in set(before) & set(after)
+        if before[name].get("route") != after[name].get("route")
     )
+    common = set(before) & set(after)
+    before_order = [name for name in before if name in common]
+    after_order = [name for name in after if name in common]
+    if before_order != after_order:
+        changed.append("action order " + "→".join(after_order))
     return {"added": added, "removed": removed, "changed": changed}
 
 
@@ -855,7 +1029,7 @@ def main() -> int:
             only = set(sys.argv[index].split(","))
     ev = Evidence()
     cal = Calibrator()
-    selected = [case for case in load_case_pack() if not only or case["case_id"] in only]
+    selected = select_cases(load_case_pack(), only)
     CASES_DIR.mkdir(exist_ok=True)
     for case in selected:
         answer = investigate(ev, cal, case)

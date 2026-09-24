@@ -1,18 +1,15 @@
-"""Structured SAR rendering.
+"""Structured, fact-preserving SAR rendering."""
 
-The renderer consumes the same episode and graph entities used by the decision
-engine.  It never invents a threshold, customer response, device, or connected
-card in order to make a narrative sound complete.
-"""
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from datetime import datetime
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 try:
-    from .episodes import parse_ts, txn_amount, txn_channel, txn_id, txn_ts
-except ImportError:  # top-level import from runner
-    from episodes import parse_ts, txn_amount, txn_channel, txn_id, txn_ts  # type: ignore
+    from .episodes import txn_amount, txn_channel, txn_id, txn_ts
+except ImportError:  # top-level import from runner.py
+    from episodes import txn_amount, txn_channel, txn_id, txn_ts  # type: ignore
 
 
 def _field(row: Mapping[str, Any], *keys: str, default: Any = "") -> Any:
@@ -27,22 +24,29 @@ def _as_rows(
     episode_rows: Iterable[Mapping[str, Any]] | None,
     txn: Mapping[str, Any] | None,
 ) -> list[dict[str, Any]]:
-    rows = [dict(r) for r in (episode_rows or []) if isinstance(r, Mapping)]
-    by_id = {txn_id(r): r for r in rows if txn_id(r)}
-    for item in affected or []:
-        if isinstance(item, Mapping):
-            row = dict(item)
-        else:
-            rid = str(item)
-            row = dict(by_id.get(rid, {"txn_id": rid}))
-        rid = txn_id(row)
-        if rid:
-            by_id[rid] = row
-    if txn and txn_id(txn) and txn_id(txn) not in by_id:
-        by_id[txn_id(txn)] = dict(txn)
-    result = list(by_id.values())
-    result.sort(key=lambda r: (txn_ts(r) or datetime.max, txn_id(r)))
-    return result
+    """Resolve exactly the affected IDs; never expand a SAR to the full episode."""
+    episode = [dict(row) for row in (episode_rows or []) if isinstance(row, Mapping)]
+    by_id = {txn_id(row): row for row in episode if txn_id(row)}
+    affected_items = list(affected or [])
+    if affected_items:
+        resolved: dict[str, dict[str, Any]] = {}
+        for item in affected_items:
+            if isinstance(item, Mapping):
+                row = dict(item)
+            else:
+                row_id = str(item)
+                row = dict(by_id.get(row_id, {"txn_id": row_id}))
+            row_id = txn_id(row)
+            if row_id:
+                resolved[row_id] = row
+        return sorted(
+            resolved.values(),
+            key=lambda row: (txn_ts(row) or datetime.max, txn_id(row)),
+        )
+
+    if txn and txn_id(txn):
+        return [dict(txn)]
+    return episode
 
 
 def _unique(values: Iterable[Any]) -> list[str]:
@@ -58,31 +62,30 @@ def _unique(values: Iterable[Any]) -> list[str]:
     return result
 
 
-def _connected_cards(device: Any, connected_cards: Iterable[str] | None, own_card: str) -> list[str]:
-    values: list[str] = []
-    if connected_cards is not None:
-        values.extend(str(v) for v in connected_cards if v)
-    if isinstance(device, Mapping):
-        values.extend(str(v) for v in (device.get("connected_card_ids") or []))
+def _connected_cards(
+    device: Any,
+    connected_cards: Iterable[str] | None,
+    own_card: str,
+    *,
+    corroborated: bool,
+) -> list[str]:
+    values = [str(value) for value in (connected_cards or []) if value]
+    if corroborated and isinstance(device, Mapping):
+        values.extend(str(value) for value in (device.get("connected_card_ids") or []))
         for row in device.get("cards", []) or []:
-            if isinstance(row, Mapping):
-                value = row.get("card_id") or row.get("id")
-            else:
-                value = row
+            value = _field(row, "card_id", "id", default="") if isinstance(row, Mapping) else row
             if value:
                 values.append(str(value))
-    return [v for v in _unique(values) if v != own_card]
+    return [value for value in _unique(values) if value != own_card]
 
 
-def _connected_devices(device: Any, connected_devices: Iterable[str] | None) -> list[str]:
-    values: list[str] = []
-    if connected_devices is not None:
-        values.extend(str(v) for v in connected_devices if v)
+def _device_ids(device: Any, connected_devices: Iterable[str] | None) -> list[str]:
+    values = [str(value) for value in (connected_devices or []) if value]
     if isinstance(device, Mapping):
-        value = device.get("device_id") or device.get("id")
+        value = _field(device, "device_id", "id", default="")
         if value:
             values.append(str(value))
-        values.extend(str(v) for v in (device.get("connected_device_profiles") or []))
+        values.extend(str(value) for value in (device.get("connected_device_profiles") or []))
     return _unique(values)
 
 
@@ -108,11 +111,11 @@ def build_sar(
     customer_denied: bool = False,
     evidence_requests: Iterable[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Build a fact-preserving SAR object.
+    """Render a SAR only from supplied episode and graph facts.
 
-    ``shared_link``/device reuse is intentionally not treated as connected
-    fraud.  The caller must pass ``connected_fraud`` or a non-empty
-    ``connected_fraud_cases`` when that stronger fact is intended.
+    A false filing decision always returns the sponsor's exact empty shape.
+    For a true filing, missing dates or subjects are rejected rather than
+    replaced with invented values.
     """
     if not file_flag:
         return {
@@ -126,108 +129,123 @@ def build_sar(
 
     rows = _as_rows(affected, episode_rows, txn)
     if not rows:
-        rows = [dict(txn or {})]
-    first = rows[0]
-    last = rows[-1]
-    first_ts = txn_ts(first)
-    last_ts = txn_ts(last)
-    first_date = first_ts.strftime("%Y-%m-%d") if first_ts else ""
-    last_date = last_ts.strftime("%Y-%m-%d") if last_ts else first_date
+        raise ValueError("a filed SAR requires at least one affected transaction")
+    if any(not txn_id(row) for row in rows):
+        raise ValueError("a filed SAR requires an ID for every affected transaction")
+    first_ts = txn_ts(rows[0])
+    last_ts = txn_ts(rows[-1])
+    if first_ts is None or last_ts is None:
+        raise ValueError("a filed SAR requires transaction timestamps")
+    first_date = first_ts.strftime("%Y-%m-%d")
+    last_date = last_ts.strftime("%Y-%m-%d")
     total = round(sum(txn_amount(row) for row in rows), 2)
-    # Use the actual episode sum.  ``exposure`` remains a compatibility input,
-    # but cannot make a narrative claim that the rows do not support.
-    if not rows:
-        total = round(abs(float(exposure or 0)), 2)
+
+    first = rows[0]
     first_amount = txn_amount(first)
     region = str(_field(first, "addr1", "region", default="") or "the recorded billing region")
     channel = txn_channel(first)
-    device_ids = _connected_devices(device, connected_devices)
-    card_ids = _connected_cards(device, connected_cards, str(card_id))
     fraud_cases = list(connected_fraud_cases or [])
     corroborated = bool(connected_fraud or fraud_cases)
+    device_ids = _device_ids(device, connected_devices)
+    card_ids = _connected_cards(device, connected_cards, str(card_id), corroborated=corroborated)
+    subjects = _unique([customer_id, card_id, *device_ids, *card_ids])
+    if not subjects:
+        raise ValueError("a filed SAR requires at least one known subject ID")
+
     request_list = list(evidence_requests or [])
     asked = bool(customer_asked or request_list)
-    denied = bool(customer_denied)
-
-    subjects = _unique([customer_id, card_id, *device_ids, *card_ids])
-    sentences: list[str] = []
-    if first_date and last_date:
-        sentences.append(
-            f"Between {first_date} and {last_date}, customer {customer_id}'s card {card_id} showed "
-            f"{len(rows)} transaction(s) totaling ${total:,.2f}."
-        )
-    else:
-        sentences.append(
-            f"Customer {customer_id}'s card {card_id} showed {len(rows)} transaction(s) totaling ${total:,.2f}."
-        )
-    sentences.append(
-        f"The first affected transaction was {txn_id(first)} on {first_date or 'an unrecorded date'} "
-        f"for ${first_amount:,.2f} through the {channel} channel in {region}."
-    )
-
     pattern_text = {
         "card_testing": "small online authorizations followed by a larger purchase are consistent with card testing",
         "card_not_present_fraud": "online purchases were inconsistent with the cardholder's baseline",
-        "card_not_present_new_device": "online purchases used a New or proxied device signal and were inconsistent with the baseline",
-        "out_of_region_use": "card-present purchases occurred in a billing region not present in the prior card history",
+        "card_not_present_new_device": "online purchases used a New or proxied device signal and deviated from the baseline",
+        "out_of_region_use": "card-present purchases occurred in a billing region absent from prior card history",
         "account_takeover": "mixed-channel activity included identity or credential anomalies",
-        "undocumented": "the activity did not match a documented typology and showed coordinated/repeated abuse",
-    }.get(pattern, "the activity was classified from the recorded evidence")
-    sentences.append(f"The pattern assessment is {pattern}: {pattern_text}.")
+        "undocumented": "the activity did not match a documented typology and showed coordinated or repeated abuse",
+    }.get(pattern, "the recorded activity was suspicious but did not match a documented typology")
 
+    sentences = [
+        f"Between {first_date} and {last_date}, customer {customer_id}'s card {card_id} showed "
+        f"{len(rows)} suspicious transaction(s) totaling ${total:,.2f}.",
+        f"The first affected transaction was {txn_id(first)} on {first_date} for "
+        f"${first_amount:,.2f} through the {channel} channel in {region}.",
+        f"The recorded pattern is {pattern}: {pattern_text}.",
+    ]
     if total > 1000:
-        sentences.append(f"The episode total of ${total:,.2f} exceeds the policy's $1,000 reporting threshold.")
-    else:
-        sentences.append(f"The episode total was ${total:,.2f}; the filing basis is the corroborated activity described below, not the dollar threshold.")
-
-    if corroborated:
-        if card_ids:
-            sentences.append(
-                f"Graph evidence links device profile {', '.join(device_ids) or 'the recorded device'} to card(s) "
-                f"{', '.join(card_ids)} with corroborated or confirmed fraud."
-            )
-        else:
-            sentences.append(
-                f"Graph evidence links device profile {', '.join(device_ids) or 'the recorded device'} to corroborated fraud."
-            )
+        sentences.append(
+            f"The episode total of ${total:,.2f} exceeds the policy's $1,000 reporting threshold."
+        )
+    elif corroborated:
+        sentences.append(
+            "The filing is based on corroborated connected-card fraud, not on the dollar threshold."
+        )
     elif coordinated:
-        sentences.append("The pre-cutoff graph neighborhood shows repeated, coordinated abuse across customers.")
+        sentences.append(
+            "The filing is based on corroborated coordinated or repeated abuse, not on the dollar threshold."
+        )
     else:
-        sentences.append("The filing basis is the documented suspicious activity and the policy gate stated in the reason.")
+        sentences.append(
+            "The filing is based on the documented suspicious activity and the policy basis stated in the reason."
+        )
+
+    if card_ids and corroborated:
+        sentences.append(
+            f"Graph evidence links the recorded origin to connected card(s) {', '.join(card_ids)}, "
+            "whose pre-cutoff cases corroborate fraud."
+        )
+    elif device_ids and corroborated:
+        sentences.append(
+            f"Graph evidence links device profile {', '.join(device_ids)} to corroborated fraud."
+        )
+    elif coordinated:
+        sentences.append(
+            "The pre-cutoff graph neighborhood shows repeated, coordinated abuse across the supported entities."
+        )
+    elif device_ids:
+        sentences.append(
+            f"Device profile {', '.join(device_ids)} is recorded for the transaction; device reuse alone is "
+            "not asserted to be fraud."
+        )
+    else:
+        sentences.append("No shared device, connected card, or cross-customer link is asserted.")
 
     if asked:
-        response_text = ""
-        for request in request_list:
-            if request.get("assumed_response"):
-                response_text = str(request["assumed_response"])
-                break
+        response_text = next(
+            (
+                str(request.get("assumed_response"))
+                for request in request_list
+                if request.get("assumed_response")
+            ),
+            "",
+        )
         if response_text:
-            sentences.append(f"An evidence request recorded this scenario response: {response_text}")
+            sentences.append(f"An evidence request recorded this assumed response: {response_text}")
         else:
-            sentences.append("An evidence request was recorded, but no additional response text was asserted.")
-    elif denied:
-        sentences.append("The case trigger explicitly reported that the customer did not authorize the transaction; no later customer interview is asserted.")
+            sentences.append("An evidence request was recorded, but no response text was asserted.")
+    elif customer_denied:
+        sentences.append(
+            "The case trigger explicitly reported that the customer did not authorize the transaction; "
+            "no later interview is asserted."
+        )
     else:
-        sentences.append("No customer response is asserted because this trigger did not contain one and no response request was made.")
+        sentences.append("No customer response is asserted because none was supplied or requested.")
 
     suspicious_reason = {
         "card_testing": "The ordered small-authorization sequence is the suspicious fact.",
         "card_not_present_fraud": "The online burst or baseline inconsistency is the suspicious fact.",
-        "card_not_present_new_device": "The New/proxy device signal combined with inconsistent online activity is the suspicious fact.",
-        "out_of_region_use": "The new-region card-present activity and retained home activity are the suspicious facts.",
+        "card_not_present_new_device": "The device signal combined with inconsistent online activity is suspicious.",
+        "out_of_region_use": "The new-region card-present activity and retained home activity are suspicious.",
         "account_takeover": "The channel and identity anomalies are the suspicious facts.",
-        "undocumented": "The cross-customer corroboration is the suspicious fact.",
+        "undocumented": "The corroborated cross-customer pattern is the suspicious fact.",
     }.get(pattern, "The recorded transaction sequence is the suspicious fact.")
     sentences.append(suspicious_reason)
-    sentences.append("Affected transaction IDs: " + ", ".join(txn_id(r) for r in rows if txn_id(r)) + ".")
+    sentences.append(
+        "Affected transaction IDs: " + ", ".join(txn_id(row) for row in rows if txn_id(row)) + "."
+    )
 
-    # The sponsor requires a complete but concise narrative.  Keep the renderer
-    # within its six-to-twelve sentence contract even for sparse fixtures.
-    narrative = " ".join(sentences)
     return {
         "file": True,
         "reason": str(reason),
-        "narrative": narrative,
+        "narrative": " ".join(sentences),
         "subjects": subjects,
         "total_amount_usd": total,
         "activity_dates": [first_date, last_date],
