@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 
-from validator import schema_problems, validate_answer, validate_files
+from validator import (
+    schema_problems,
+    validate_answer,
+    validate_files,
+    validate_graph_files,
+)
 
 
 def case_row():
@@ -179,3 +184,29 @@ def test_unwritten_case_requires_empty_graph_id(valid_answer, validation_context
     answer["case"]["graph_case_id"] = "AG-HHG-001"
     problems = validate_answer(answer, case_row(), validation_context)
     assert any("unwritten case" in problem for problem in problems)
+
+
+def test_graph_validator_compares_stored_answer_and_evidence_edges(
+    tmp_path, valid_answer
+):
+    answer = deepcopy(valid_answer)
+    answer["case"]["written_to_graph"] = True
+    answer["case"]["graph_case_id"] = "AG-HHG-001"
+    (tmp_path / "HHG-001.json").write_text(json.dumps(answer), encoding="utf-8")
+
+    class Reader:
+        def read_agent_case(self, case_id):
+            assert case_id == "AG-HHG-001"
+            return {
+                "case_id": case_id,
+                "found": True,
+                "answer": answer,
+                "txn_ids": [],
+                "card_ids": ["C-1-K1"],
+                "device_ids": [],
+                "prior_case_ids": [],
+            }
+
+    assert validate_graph_files([case_row()], tmp_path, Reader()) == {
+        "HHG-001": []
+    }

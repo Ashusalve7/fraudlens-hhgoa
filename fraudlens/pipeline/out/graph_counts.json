@@ -1,9 +1,30 @@
 {
-  "Customer": 13334,
-  "Card": 13472,
-  "DeviceProfile": 0,
-  "EmailDomain": 0,
-  "BillingRegion": 0,
-  "Transaction": 0,
-  "ClosedCase": 0
+  "edges": {
+    "BILLED_IN": 525003,
+    "CASE_CARD": 5565,
+    "CASE_CONN_CARD": 92,
+    "CASE_DEVICE": 5137,
+    "CASE_TXN": 14955,
+    "FROM_DEVICE": 140784,
+    "NEXT_TXN": 576424,
+    "OWNS_CARD": 14318,
+    "PAID_WITH": 590742,
+    "P_EMAIL": 496262,
+    "R_EMAIL": 137453
+  },
+  "health_path": "C:\\Users\\ashus\\OneDrive\\Desktop\\HH GOA\\Task 4\\fraudlens\\pipeline\\out\\graph_health.json",
+  "health_status": "healthy",
+  "managed_vertices": {
+    "AgentCase": 20
+  },
+  "vertices": {
+    "BillingRegion": 332,
+    "Card": 14318,
+    "ClosedCase": 5565,
+    "Customer": 13553,
+    "DeviceProfile": 9705,
+    "EmailDomain": 60,
+    "PolicyChunk": 17,
+    "Transaction": 590742
+  }
 }

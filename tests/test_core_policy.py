@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import re
 
-from agent.decision import independent_evidence_count, next_best_actions, should_file_sar, stop_reason
+from agent.decision import (
+    independent_evidence_count,
+    next_best_actions,
+    should_file_sar,
+    stop_reason,
+)
 
 
 def names(actions):
@@ -29,6 +34,23 @@ def test_r1_verifies_a_single_weak_signal_before_any_block():
     )
     assert "VERIFY_WITH_CUSTOMER" in names(actions)
     assert "BLOCK_CARD" not in names(actions)
+    assert_policy_citations(actions)
+
+
+def test_high_probability_without_independent_fraud_evidence_does_not_block():
+    actions = next_best_actions(
+        0.96,
+        300,
+        "card_not_present_new_device",
+        True,
+        customer_denied=False,
+        customer_confirmed=False,
+        no_reply_24h=False,
+        testing_cleared_over_100=False,
+        n_independent=2,
+    )
+    assert "BLOCK_CARD" not in names(actions)
+    assert "VERIFY_WITH_CUSTOMER" in names(actions)
     assert_policy_citations(actions)
 
 

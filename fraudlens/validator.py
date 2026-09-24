@@ -2,8 +2,8 @@
 
 The validator checks facts and policy relationships, not merely JSON shape.  It
 uses local parquet/CSV artifacts when available and never opens a graph
-connection by default.  A caller may provide graph IDs or a graph-existence
-callback for an explicit integration check.
+connection by default. ``--check-graph`` explicitly uses the MCP adapter to
+read every persisted AgentCase and compares its answer and evidence edges.
 """
 
 from __future__ import annotations
@@ -818,6 +818,81 @@ def validate_files(
     return result
 
 
+def validate_graph_files(
+    case_rows: Iterable[Mapping[str, Any]],
+    answers_dir: Path,
+    reader: Any,
+) -> dict[str, list[str]]:
+    """Verify that each exported case is retrievable with identical graph edges."""
+    findings: dict[str, list[str]] = {}
+    for raw_case in case_rows:
+        case = dict(raw_case)
+        case_id = str(case["case_id"])
+        problems: list[str] = []
+        path = answers_dir / f"{case_id}.json"
+        try:
+            answer = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            findings[case_id] = [f"cannot read local answer for graph validation: {exc}"]
+            continue
+        case_result = answer.get("case", {}) if isinstance(answer.get("case"), Mapping) else {}
+        graph_case_id = str(case_result.get("graph_case_id", ""))
+        if not case_result.get("written_to_graph"):
+            problems.append("local answer does not claim a successful graph write")
+        if graph_case_id != f"AG-{case_id}":
+            problems.append(
+                f"graph_case_id must be AG-{case_id}, found {graph_case_id or '<empty>'}"
+            )
+        if problems:
+            findings[case_id] = problems
+            continue
+        try:
+            remote = reader.read_agent_case(graph_case_id)
+        except Exception as exc:
+            findings[case_id] = [f"graph read failed: {exc}"]
+            continue
+        if not isinstance(remote, Mapping) or not remote.get("found"):
+            findings[case_id] = [f"graph case {graph_case_id} was not found"]
+            continue
+        if remote.get("answer") != answer:
+            problems.append("stored AgentCase.answer_json differs from the exported answer")
+        expected_txns = {
+            str(value) for value in case_result.get("affected_txn_ids", []) if value
+        }
+        expected_cards = {
+            str(case.get("card_id", "")),
+            *(
+                str(value)
+                for value in case_result.get("connected_card_ids", [])
+                if value
+            ),
+        }
+        expected_cards.discard("")
+        expected_devices = {
+            str(value)
+            for value in case_result.get("connected_device_profiles", [])
+            if value
+        }
+        expected_priors = {
+            str(value)
+            for value in case_result.get("similar_prior_cases", [])
+            if value
+        }
+        for label, expected, key in (
+            ("AG_TXN", expected_txns, "txn_ids"),
+            ("AG_CARD", expected_cards, "card_ids"),
+            ("AG_DEVICE", expected_devices, "device_ids"),
+            ("AG_SIMILAR", expected_priors, "prior_case_ids"),
+        ):
+            observed = {str(value) for value in remote.get(key, []) if value}
+            if observed != expected:
+                problems.append(
+                    f"{label} mismatch: expected {sorted(expected)}, observed {sorted(observed)}"
+                )
+        findings[case_id] = problems
+    return findings
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate FraudLens answers semantically")
     parser.add_argument("--cases-dir", type=Path, default=CASES_DIR)
@@ -825,7 +900,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--check-graph",
         action="store_true",
-        help="reserved for an explicitly injected graph checker; local validation never connects",
+        help="also read every AgentCase through MCP and compare stored answers/edges",
     )
     args = parser.parse_args(argv)
     pack = args.data_dir / "case_pack.csv"
@@ -836,11 +911,22 @@ def main(argv: list[str] | None = None) -> int:
         rows = list(csv.DictReader(handle))
     context = ValidationContext.from_repo(HERE, args.data_dir)
     findings = validate_files(rows, args.cases_dir, context)
-    problems = [(case_id, problem) for case_id, items in findings.items() for problem in items]
     if args.check_graph:
-        print(
-            "Graph checks are not run by the local validator; provide graph_case_ids/callback in the API for an integration check."
-        )
+        try:
+            from agent.evidence import Evidence
+        except ImportError as exc:
+            print(f"Cannot load MCP evidence adapter: {exc}", file=sys.stderr)
+            return 2
+        evidence = Evidence()
+        try:
+            graph_findings = validate_graph_files(rows, args.cases_dir, evidence)
+        finally:
+            close = getattr(evidence, "close", None)
+            if callable(close):
+                close()
+        for case_id, items in graph_findings.items():
+            findings.setdefault(case_id, []).extend(items)
+    problems = [(case_id, problem) for case_id, items in findings.items() for problem in items]
     if problems:
         print(f"{len(problems)} PROBLEMS:")
         for case_id, problem in problems:
@@ -863,6 +949,7 @@ __all__ = [
     "schema_problems",
     "validate_answer",
     "validate_files",
+    "validate_graph_files",
 ]
 
 

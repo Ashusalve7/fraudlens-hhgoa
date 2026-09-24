@@ -49,12 +49,12 @@ Run the project pipeline in order and stop on any failed stage:
 ```bash
 uv run --project fraudlens python fraudlens/pipeline/derive_card_ids_final.py
 uv run --project fraudlens python fraudlens/pipeline/build_load_files.py
-uv run --project fraudlens python fraudlens/pipeline/create_schema.py
+uv run --project fraudlens python fraudlens/pipeline/create_schema.py --skip-jobs
 uv run --project fraudlens python fraudlens/pipeline/load_graph.py
 uv run --project fraudlens python fraudlens/pipeline/install_queries.py
 ```
 
-The graph-health report must include every declared vertex and edge, expected and actual counts, graph name, schema version, and load timestamp. A count is not healthy merely because the API responds.
+The graph-health report must include every declared vertex and edge, expected and actual counts, graph name, schema version, and load timestamp. A count is not healthy merely because the API responds. For a targeted resumable refresh, use `load_graph.py --only v_DeviceProfile,v_PolicyChunk,e_NEXT_TXN,e_CASE_TXN,e_CASE_CARD,e_CASE_CONN_CARD,e_CASE_DEVICE`; never treat a partial load as a release health pass.
 
 ## Train and evaluate
 
@@ -68,8 +68,9 @@ The generated model must be consumable without manual edits. Documentation metri
 ## Investigate and validate
 
 ```bash
-uv run --project fraudlens python fraudlens/runner.py --all
+uv run --project fraudlens python fraudlens/runner.py
 uv run --project fraudlens python fraudlens/validator.py
+uv run --project fraudlens python fraudlens/validator.py --check-graph
 ```
 
 Validation must fail on temporal leakage, incorrect SAR facts, policy/action mismatches, graph/output divergence, fabricated IDs, or cumulative tool counts.
@@ -87,7 +88,7 @@ Open `http://127.0.0.1:8000`. The FastAPI service serves the production `dashboa
 
 ```bash
 uv run --project fraudlens ruff check fraudlens scripts
-uv run --project fraudlens pytest fraudlens/tests
+uv run --project fraudlens pytest tests --cov=fraudlens --cov-fail-under=70
 npm run build --prefix fraudlens/dashboard
 npm audit --prefix fraudlens/dashboard --audit-level=high
 ```

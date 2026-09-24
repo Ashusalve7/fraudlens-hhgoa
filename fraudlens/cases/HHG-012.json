@@ -1,54 +1,62 @@
 {
   "case_id": "HHG-012",
   "case": {
-    "status": "closed_fraud",
-    "verdict": "fraud",
-    "fraud_probability": 0.9919,
-    "pattern": "out_of_region_use",
+    "status": "escalated",
+    "verdict": "uncertain",
+    "fraud_probability": 0.992,
+    "pattern": "none",
     "pattern_description": "",
-    "affected_txn_ids": [
-      "3553342",
-      "3561044"
-    ],
-    "first_suspicious_txn_id": "3553342",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
     "connected_card_ids": [],
     "connected_device_profiles": [],
-    "exposure_usd": 84.77,
+    "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "Flagged transaction 3553342: $30.91 in_person (W) with model risk score 0.55 - a reason to look, not a verdict.",
+        "claim": "Flagged transaction 3553342: $30.91 in_person (W) with model risk score 0.55; the score is an investigation input, not a verdict.",
         "source": "graph",
-        "ref": "query:get_transaction_context",
+        "ref": "query:get_transaction_context(txn_id=3553342)",
         "entity_ids": [
           "3553342"
         ]
       },
       {
-        "claim": "Card window shows 2 transactions within +-24h of the trigger (sum $84.77); card's 30-day baseline mean ratio 0.42.",
+        "claim": "The bounded graph algorithm returned 548 node(s) and 547 observed edge(s); its scope is the returned relation set, not an unbounded global community.",
         "source": "graph",
-        "ref": "query:get_card_window",
+        "ref": "mcp:graph_ring(txn_id=3553342)",
         "entity_ids": [
-          "3553342",
-          "3561044"
+          "3553342"
         ]
       },
       {
-        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-2228, CC-1574, CC-4585).",
+        "claim": "Retrieved sponsor policy chunk '1. Actions' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
         "source": "graph",
-        "ref": "query:find_similar_cases",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-03fa4768ea71e63a5e93d19e)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '3. Rules' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions. Rules: R1|R10|R2|R3|R4|R5|R6|R7|R8|R9.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-52b8f607470089c2ed45765b)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk 'Things to know' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-c72ff9e45c708e8326186f2e)",
+        "entity_ids": []
+      },
+      {
+        "claim": "The bounded episode selected 1 transaction(s), totaling $30.91, from the card-window query run from 2016-10-19 04:00:31 through 2016-12-18 05:00:31.",
+        "source": "graph",
+        "ref": "query:get_card_window(start=2016-10-19 04:00:31, end=2016-12-18 05:00:31)",
         "entity_ids": [
-          "CC-2228",
-          "CC-1574",
-          "CC-4585"
+          "3553342"
         ]
       }
     ],
-    "similar_prior_cases": [
-      "CC-2228",
-      "CC-1574",
-      "CC-4585"
-    ],
-    "summary": "Alert HHG-012: the model scored it 0.55 on transaction 3553342 ($30.91, in_person). Investigation supports out of region use: 2 transaction(s) in the episode, exposure $84.77. Probability 0.99.",
+    "similar_prior_cases": [],
+    "summary": "Alert HHG-012: the model scored transaction 3553342 at 0.55 ($30.91, in_person). The evidence remains uncertain with fraud probability 0.99; the alert is escalated rather than treated as a confirmed fraud finding.",
     "written_to_graph": true,
     "graph_case_id": "AG-HHG-012"
   },
@@ -56,51 +64,50 @@
   "next_best_actions": {
     "initial": [
       {
-        "action": "BLOCK_CARD",
-        "route": "L1",
-        "reason": "R1/R2: fraud probability 0.99 supported by independent graph evidence"
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: probability 0.99 does not satisfy the high-confidence blocking rule"
+      },
+      {
+        "action": "STEP_UP_AUTH",
+        "route": "auto",
+        "reason": "R1: use step-up authentication as the lower-impact alternative"
       },
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "R2: open internal case with evidence attached"
+        "reason": "3a: open a case when probability reaches 0.30 or evidence is collected"
       }
     ],
     "final": [
       {
-        "action": "BLOCK_CARD",
-        "route": "L1",
-        "reason": "R1/R2: fraud probability 0.99 supported by independent graph evidence"
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: probability 0.99 does not satisfy the high-confidence blocking rule"
+      },
+      {
+        "action": "STEP_UP_AUTH",
+        "route": "auto",
+        "reason": "R1: use step-up authentication as the lower-impact alternative"
       },
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "R2: open internal case with evidence attached"
+        "reason": "3a: open a case when probability reaches 0.30 or evidence is collected"
       }
     ],
     "what_changed": "nothing"
   },
   "sar": {
     "file": false,
-    "reason": "3a: case only - exposure under $1,000, no shared or undocumented link (most cases never need a report)",
+    "reason": "3a: no report without confirmed or strongly suspected fraud",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Probability 0.99 beyond the 0.85/0.15 thresholds with 3 independent evidence items (policy 6).",
-  "tool_calls": 55,
+  "stop_reason": "The remaining uncertainty requires a human decision or additional evidence; the probability threshold has only 1 independent evidence item(s), below the required two (policy 6).",
+  "tool_calls": 8,
   "tokens": 0,
-  "latency_s": 3.6,
-  "_states": [
-    "TRIGGERED",
-    "CONTEXT_RETRIEVED",
-    "EVIDENCE_GATHERED",
-    "PATTERNS_ASSESSED",
-    "MEMORY_RETRIEVED",
-    "NBA_INITIAL",
-    "NBA_FINAL",
-    "CASE_WRITTEN",
-    "ANSWER_EXPORTED"
-  ]
+  "latency_s": 6.0209
 }

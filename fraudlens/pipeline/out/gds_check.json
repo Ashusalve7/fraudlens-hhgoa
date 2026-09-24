@@ -1,0 +1,6 @@
+{
+  "available": true,
+  "package": "GDBMS_ALGO",
+  "response_received": true,
+  "note": "Package presence is not an algorithm result; record the exact packaged query and output hash before claiming a GDS run."
+}

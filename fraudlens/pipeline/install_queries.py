@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -42,10 +43,8 @@ def main() -> int:
         return 1
     print(f"{len(queries)} queries: {[name for name, _ in queries]}")
     for name, query in queries:
-        try:
+        with suppress(Exception):
             conn.gsql(f"USE GRAPH {GRAPHNAME}\nDROP QUERY {name}")
-        except Exception:
-            pass
         try:
             output = conn.gsql(f"USE GRAPH {GRAPHNAME}\n{query}")
         except Exception as exc:

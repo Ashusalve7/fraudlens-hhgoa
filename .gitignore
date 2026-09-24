@@ -28,3 +28,8 @@ node_modules/
 # OS/editor
 .DS_Store
 Thumbs.db
+
+# Local cleanup quarantine and root-level release output
+/Unnecssarythings/
+/dist/
+*.zip

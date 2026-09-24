@@ -113,12 +113,22 @@ def _count_edge(conn: Any, spec: Any, retries: int = 3) -> int | None:
 def _manifest_fingerprint(name: str, path: Path) -> str:
     manifest = load_manifest()
     entry = manifest.get("source_inspection", {}).get("entries", {}).get(name)
-    if entry and entry.get("sha256"):
-        # Re-check the inexpensive metadata where possible; the loader must not
-        # silently use a manifest for a replaced parquet file.
-        if entry.get("size_bytes") == path.stat().st_size:
-            return str(entry["sha256"])
+    # Re-check inexpensive metadata; never trust a manifest for a replaced file.
+    if entry and entry.get("sha256") and entry.get("size_bytes") == path.stat().st_size:
+        return str(entry["sha256"])
     return sha256_file(path)
+
+
+def _string_graph_ids(frame: pd.DataFrame, spec: Any) -> pd.DataFrame:
+    """Normalize every primary/foreign key before the RESTPP upsert."""
+    result = frame.copy()
+    for column in spec.id_columns:
+        values = result[column].astype("string")
+        invalid = values.isna() | values.str.strip().isin({"", "nan", "None", "<NA>"})
+        if invalid.any():
+            raise RuntimeError(f"{column} contains null or empty graph IDs")
+        result[column] = values.str.strip().astype(str)
+    return result
 
 
 def _load_one(conn: Any, spec: Any, frame: pd.DataFrame, fingerprint: str, log: dict[str, Any], run_id: str, chunk_size: int) -> tuple[bool, list[str]]:
@@ -136,9 +146,15 @@ def _load_one(conn: Any, spec: Any, frame: pd.DataFrame, fingerprint: str, log: 
         })
     chunks = entity_log.setdefault("chunks", {})
     errors: list[str] = []
-    total_chunks = max(1, (len(frame) + chunk_size - 1) // chunk_size)
-    for index, start in enumerate(range(0, len(frame), chunk_size)):
-        chunk = sanitize(frame.iloc[start : start + chunk_size])
+    normalized = _string_graph_ids(frame, spec)
+    if normalized.empty:
+        entity_log["done"] = True
+        chunks["0"] = {"status": "done", "rows": 0, "source_sha256": fingerprint}
+        atomic_write_json(LOG_PATH, log)
+        return True, []
+    total_chunks = max(1, (len(normalized) + chunk_size - 1) // chunk_size)
+    for index, start in enumerate(range(0, len(normalized), chunk_size)):
+        chunk = sanitize(normalized.iloc[start : start + chunk_size])
         checkpoint = chunks.setdefault(str(index), {"status": "pending", "attempts": 0})
         if checkpoint.get("status") == "done" and checkpoint.get("source_sha256") == fingerprint:
             continue
@@ -301,7 +317,7 @@ def _make_health(
     elif remote is not None and health["checks"]["remote_counts"]["status"] == "fail":
         health["status"] = "partial" if mode == "only" else "failed"
     elif mode == "only":
-        health["status"] = "partial"
+        health["status"] = "healthy" if selected == set(PLAN_BY_NAME) else "partial"
     else:
         health["status"] = "healthy" if remote_ok else "failed"
     health["summary"] = {

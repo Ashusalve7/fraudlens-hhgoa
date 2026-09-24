@@ -3,7 +3,7 @@
   "case": {
     "status": "closed_legitimate",
     "verdict": "legitimate",
-    "fraud_probability": 0.0119,
+    "fraud_probability": 0.0024,
     "pattern": "none",
     "pattern_description": "",
     "affected_txn_ids": [],
@@ -13,72 +13,88 @@
     "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "Flagged transaction 3503878: $99.92 online (R) with model risk score 0.90 - a reason to look, not a verdict.",
+        "claim": "Flagged transaction 3503878: $99.92 online (R) with model risk score 0.90; the score is an investigation input, not a verdict.",
         "source": "graph",
-        "ref": "query:get_transaction_context",
+        "ref": "query:get_transaction_context(txn_id=3503878)",
         "entity_ids": [
           "3503878"
         ]
       },
       {
-        "claim": "Card window shows 1 transactions within +-24h of the trigger (sum $99.92); card's 30-day baseline mean ratio 0.30.",
+        "claim": "The bounded graph algorithm returned 309 node(s) and 554 observed edge(s); its scope is the returned relation set, not an unbounded global community.",
         "source": "graph",
-        "ref": "query:get_card_window",
+        "ref": "mcp:graph_ring(txn_id=3503878)",
         "entity_ids": [
           "3503878"
         ]
       },
       {
-        "claim": "Device profile 3497738 links 5 cards including cards outside this customer's ownership.",
+        "claim": "Retrieved sponsor policy chunk '3. Rules' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions. Rules: R1|R10|R2|R3|R4|R5|R6|R7|R8|R9.",
         "source": "graph",
-        "ref": "query:get_device_neighborhood",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-52b8f607470089c2ed45765b)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '1. Actions' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-03fa4768ea71e63a5e93d19e)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '3b. The next best action can change' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions. Rules: R1|R2.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-ef26c3d7a59d5e9d156f8029)",
+        "entity_ids": []
+      },
+      {
+        "claim": "The bounded episode selected 1 transaction(s), totaling $99.92, from the card-window query run from 2016-10-02 17:28:53 through 2016-12-01 22:28:53.",
+        "source": "graph",
+        "ref": "query:get_card_window(start=2016-10-02 17:28:53, end=2016-12-01 22:28:53)",
         "entity_ids": [
+          "3503878"
+        ]
+      },
+      {
+        "claim": "The device-neighborhood query for DP-8d1c12a568f7 from 2016-11-24 22:28:53 through 2016-12-01 22:28:53 returned 3 card ID(s); device reuse alone is not treated as connected fraud.",
+        "source": "graph",
+        "ref": "query:get_device_neighborhood(device_id=DP-8d1c12a568f7, start=2016-11-24 22:28:53, end=2016-12-01 22:28:53)",
+        "entity_ids": [
+          "DP-8d1c12a568f7",
           "C11309-K1",
-          "C01104-K2",
-          "C01983-K1",
           "C06224-K2",
           "C07987-K2"
         ]
       },
       {
-        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-0245, CC-2419, CC-4232).",
-        "source": "graph",
-        "ref": "query:find_similar_cases",
-        "entity_ids": [
-          "CC-0245",
-          "CC-2419",
-          "CC-4232"
-        ]
-      },
-      {
-        "claim": "Customer confirms the transaction (assumption: profile resembles cleared alerts in case memory; no reply branch alternative recorded).",
+        "claim": "Evidence request 1 recorded this explicitly simulated response: Simulated customer response: the customer confirms the online transaction of $99.92; the response assumption is based on the calibrated prior.",
         "source": "customer",
         "ref": "evidence_request:1",
         "entity_ids": []
       }
     ],
-    "similar_prior_cases": [
-      "CC-0245",
-      "CC-2419",
-      "CC-4232"
-    ],
-    "summary": "Alert HHG-019: the model scored it 0.90 on transaction 3503878 ($99.92, online). Evidence is consistent with legitimate cardholder activity; probability 0.01. The customer confirmed the transaction.",
+    "similar_prior_cases": [],
+    "summary": "Alert HHG-019: the model scored transaction 3503878 at 0.90 ($99.92, online). The available evidence is consistent with legitimate activity; no fraud episode is asserted. The separately recorded customer evidence response confirms the transaction.",
     "written_to_graph": true,
     "graph_case_id": "AG-HHG-019"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 88,
-      "assumed_response": "Customer confirms the transaction (assumption: profile resembles cleared alerts in case memory; no reply branch alternative recorded)."
+      "asked_after_step": 8,
+      "assumed_response": "Simulated customer response: the customer confirms the online transaction of $99.92; the response assumption is based on the calibrated prior."
     }
   ],
   "next_best_actions": {
     "initial": [
       {
-        "action": "CLOSE_NO_FRAUD",
+        "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: probability 0.01 at or below 0.15 with sufficient evidence"
+        "reason": "R1: probability 0.02 does not satisfy the high-confidence blocking rule"
+      },
+      {
+        "action": "STEP_UP_AUTH",
+        "route": "auto",
+        "reason": "R1: use step-up authentication as the lower-impact alternative"
       }
     ],
     "final": [
@@ -88,7 +104,7 @@
         "reason": "R3: customer confirmed the transaction"
       }
     ],
-    "what_changed": "Customer confirmation lowered probability from 0.01 to 0.01; recommendation moved to close as legitimate per R3."
+    "what_changed": "The final recommendation added CLOSE_NO_FRAUD; removed STEP_UP_AUTH, VERIFY_WITH_CUSTOMER."
   },
   "sar": {
     "file": false,
@@ -98,21 +114,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "A verification response settled the question (policy 6).",
-  "tool_calls": 89,
+  "stop_reason": "A recorded verification response settled the question (policy 6).",
+  "tool_calls": 9,
   "tokens": 0,
-  "latency_s": 3.6,
-  "_states": [
-    "TRIGGERED",
-    "CONTEXT_RETRIEVED",
-    "EVIDENCE_GATHERED",
-    "PATTERNS_ASSESSED",
-    "MEMORY_RETRIEVED",
-    "NBA_INITIAL",
-    "EVIDENCE_REQUESTED",
-    "EVIDENCE_RECEIVED",
-    "NBA_FINAL",
-    "CASE_WRITTEN",
-    "ANSWER_EXPORTED"
-  ]
+  "latency_s": 7.123
 }

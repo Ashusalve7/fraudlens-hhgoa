@@ -1,0 +1,406 @@
+{
+  "checks": {
+    "local_keys_and_orphans": {
+      "details": {
+        "orphan_checks": [
+          {
+            "edge_type": "OWNS_CARD",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "Customer",
+            "target_type": "Card",
+            "valid": true
+          },
+          {
+            "edge_type": "PAID_WITH",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "Transaction",
+            "target_type": "Card",
+            "valid": true
+          },
+          {
+            "edge_type": "FROM_DEVICE",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "Transaction",
+            "target_type": "DeviceProfile",
+            "valid": true
+          },
+          {
+            "edge_type": "P_EMAIL",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "Transaction",
+            "target_type": "EmailDomain",
+            "valid": true
+          },
+          {
+            "edge_type": "R_EMAIL",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "Transaction",
+            "target_type": "EmailDomain",
+            "valid": true
+          },
+          {
+            "edge_type": "BILLED_IN",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "Transaction",
+            "target_type": "BillingRegion",
+            "valid": true
+          },
+          {
+            "edge_type": "NEXT_TXN",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "Transaction",
+            "target_type": "Transaction",
+            "valid": true
+          },
+          {
+            "edge_type": "CASE_TXN",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "ClosedCase",
+            "target_type": "Transaction",
+            "valid": true
+          },
+          {
+            "edge_type": "CASE_CARD",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "ClosedCase",
+            "target_type": "Card",
+            "valid": true
+          },
+          {
+            "edge_type": "CASE_CONN_CARD",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "ClosedCase",
+            "target_type": "Card",
+            "valid": true
+          },
+          {
+            "edge_type": "CASE_DEVICE",
+            "orphan_source_ids": 0,
+            "orphan_target_ids": 0,
+            "source_type": "ClosedCase",
+            "target_type": "DeviceProfile",
+            "valid": true
+          }
+        ]
+      },
+      "status": "pass"
+    },
+    "next_txn": {
+      "details": {
+        "checks": {
+          "chronological": true,
+          "endpoints_exist": true,
+          "gap_is_uint64": true,
+          "no_self_edges": true,
+          "one_incoming_per_target": true,
+          "one_outgoing_per_source": true,
+          "same_card": true
+        },
+        "metrics": {
+          "max_gap_seconds": 15547063,
+          "min_gap_seconds": 0,
+          "rows": 576424,
+          "unique_sources": 576424,
+          "unique_targets": 576424
+        },
+        "valid": true
+      },
+      "status": "pass"
+    },
+    "remote_counts": {
+      "details": {
+        "edges": {
+          "BILLED_IN": {
+            "difference": 0,
+            "expected": 525003,
+            "observed": 525003,
+            "status": "pass"
+          },
+          "CASE_CARD": {
+            "difference": 0,
+            "expected": 5565,
+            "observed": 5565,
+            "status": "pass"
+          },
+          "CASE_CONN_CARD": {
+            "difference": 0,
+            "expected": 92,
+            "observed": 92,
+            "status": "pass"
+          },
+          "CASE_DEVICE": {
+            "difference": 0,
+            "expected": 5137,
+            "observed": 5137,
+            "status": "pass"
+          },
+          "CASE_TXN": {
+            "difference": 0,
+            "expected": 14955,
+            "observed": 14955,
+            "status": "pass"
+          },
+          "FROM_DEVICE": {
+            "difference": 0,
+            "expected": 140784,
+            "observed": 140784,
+            "status": "pass"
+          },
+          "NEXT_TXN": {
+            "difference": 0,
+            "expected": 576424,
+            "observed": 576424,
+            "status": "pass"
+          },
+          "OWNS_CARD": {
+            "difference": 0,
+            "expected": 14318,
+            "observed": 14318,
+            "status": "pass"
+          },
+          "PAID_WITH": {
+            "difference": 0,
+            "expected": 590742,
+            "observed": 590742,
+            "status": "pass"
+          },
+          "P_EMAIL": {
+            "difference": 0,
+            "expected": 496262,
+            "observed": 496262,
+            "status": "pass"
+          },
+          "R_EMAIL": {
+            "difference": 0,
+            "expected": 137453,
+            "observed": 137453,
+            "status": "pass"
+          }
+        },
+        "errors": [],
+        "vertices": {
+          "BillingRegion": {
+            "difference": 0,
+            "expected": 332,
+            "observed": 332,
+            "status": "pass"
+          },
+          "Card": {
+            "difference": 0,
+            "expected": 14318,
+            "observed": 14318,
+            "status": "pass"
+          },
+          "ClosedCase": {
+            "difference": 0,
+            "expected": 5565,
+            "observed": 5565,
+            "status": "pass"
+          },
+          "Customer": {
+            "difference": 0,
+            "expected": 13553,
+            "observed": 13553,
+            "status": "pass"
+          },
+          "DeviceProfile": {
+            "difference": 0,
+            "expected": 9705,
+            "observed": 9705,
+            "status": "pass"
+          },
+          "EmailDomain": {
+            "difference": 0,
+            "expected": 60,
+            "observed": 60,
+            "status": "pass"
+          },
+          "PolicyChunk": {
+            "difference": 0,
+            "expected": 17,
+            "observed": 17,
+            "status": "pass"
+          },
+          "Transaction": {
+            "difference": 0,
+            "expected": 590742,
+            "observed": 590742,
+            "status": "pass"
+          }
+        }
+      },
+      "status": "pass"
+    },
+    "resume": {
+      "details": {
+        "entities": {
+          "e_CASE_CARD": {
+            "done": true,
+            "failed_chunks": [],
+            "rows": 5565,
+            "source_sha256": "be3bf04e366d4508e4eeb80d6aca5cb46c4b05d6c4eba8f1931442fff9fa2f4f"
+          },
+          "e_CASE_CONN_CARD": {
+            "done": true,
+            "failed_chunks": [],
+            "rows": 92,
+            "source_sha256": "436a3213492892bfab05be2252b6b47af8ee0196cc6539baf7000540200c6f15"
+          },
+          "e_CASE_DEVICE": {
+            "done": true,
+            "failed_chunks": [],
+            "rows": 5137,
+            "source_sha256": "3dbad23447b955060e284084d7a15326f930edea1f1de3dfb15d810847cf50b7"
+          },
+          "e_CASE_TXN": {
+            "done": true,
+            "failed_chunks": [],
+            "rows": 14955,
+            "source_sha256": "93e545d3c2d564d7de024400ce724bd3b7fcd76e4bbcde4e43e1a7ce5cc43d40"
+          },
+          "e_NEXT_TXN": {
+            "done": true,
+            "failed_chunks": [],
+            "rows": 576424,
+            "source_sha256": "c1a690dae87a576f54f879efc9db528af95cb5e04b3292350a11ce76b36d758e"
+          },
+          "v_DeviceProfile": {
+            "done": true,
+            "failed_chunks": [],
+            "rows": 9705,
+            "source_sha256": "acfd8899262d466eb28f3c6f7a659804ebae3994e29c1d174315a27f919cdbbb"
+          },
+          "v_PolicyChunk": {
+            "done": true,
+            "failed_chunks": [],
+            "rows": 17,
+            "source_sha256": "e58d9020db8a1238c8e36432f421a8ebf159cdd8389df540804d4517855e4e82"
+          }
+        },
+        "run_id": "ecbbfec2-189e-471f-999d-d62c378c6311",
+        "selected": [
+          "e_BILLED_IN",
+          "e_CASE_CARD",
+          "e_CASE_CONN_CARD",
+          "e_CASE_DEVICE",
+          "e_CASE_TXN",
+          "e_FROM_DEVICE",
+          "e_NEXT_TXN",
+          "e_OWNS_CARD",
+          "e_PAID_WITH",
+          "e_P_EMAIL",
+          "e_R_EMAIL",
+          "v_BillingRegion",
+          "v_Card",
+          "v_ClosedCase",
+          "v_Customer",
+          "v_DeviceProfile",
+          "v_EmailDomain",
+          "v_PolicyChunk",
+          "v_Transaction"
+        ]
+      },
+      "status": "pass"
+    },
+    "source_files": {
+      "details": {
+        "errors": []
+      },
+      "status": "pass"
+    }
+  },
+  "contract_version": "fraudlens.graph-health/v1",
+  "errors": [],
+  "expected": {
+    "edges": {
+      "BILLED_IN": 525003,
+      "CASE_CARD": 5565,
+      "CASE_CONN_CARD": 92,
+      "CASE_DEVICE": 5137,
+      "CASE_TXN": 14955,
+      "FROM_DEVICE": 140784,
+      "NEXT_TXN": 576424,
+      "OWNS_CARD": 14318,
+      "PAID_WITH": 590742,
+      "P_EMAIL": 496262,
+      "R_EMAIL": 137453
+    },
+    "managed_vertices": [
+      "AgentCase"
+    ],
+    "vertices": {
+      "BillingRegion": 332,
+      "Card": 14318,
+      "ClosedCase": 5565,
+      "Customer": 13553,
+      "DeviceProfile": 9705,
+      "EmailDomain": 60,
+      "PolicyChunk": 17,
+      "Transaction": 590742
+    }
+  },
+  "generated_at": "2026-09-24T23:09:49.502949Z",
+  "graph": "FraudGraph",
+  "mode": "verify-only",
+  "observed": {
+    "edges": {
+      "BILLED_IN": 525003,
+      "CASE_CARD": 5565,
+      "CASE_CONN_CARD": 92,
+      "CASE_DEVICE": 5137,
+      "CASE_TXN": 14955,
+      "FROM_DEVICE": 140784,
+      "NEXT_TXN": 576424,
+      "OWNS_CARD": 14318,
+      "PAID_WITH": 590742,
+      "P_EMAIL": 496262,
+      "R_EMAIL": 137453
+    },
+    "managed_vertices": {
+      "AgentCase": 20
+    },
+    "vector_indexes": {},
+    "vertices": {
+      "BillingRegion": 332,
+      "Card": 14318,
+      "ClosedCase": 5565,
+      "Customer": 13553,
+      "DeviceProfile": 9705,
+      "EmailDomain": 60,
+      "PolicyChunk": 17,
+      "Transaction": 590742
+    }
+  },
+  "remaining_risks": [
+    "TigerGraph count endpoints may be eventually consistent for edge types.",
+    "A non-empty AgentCase type and optional vector indexes are managed components, not static bulk counts."
+  ],
+  "run_id": "ecbbfec2-189e-471f-999d-d62c378c6311",
+  "source": {
+    "errors": [],
+    "expected_files": 19,
+    "inspected_files": 19,
+    "manifest_contract_version": "fraudlens.load-plan/v2",
+    "manifest_path": "C:\\Users\\ashus\\OneDrive\\Desktop\\HH GOA\\Task 4\\fraudlens\\pipeline\\out\\load_manifest.json",
+    "valid": true
+  },
+  "status": "healthy",
+  "summary": {
+    "error_count": 0,
+    "expected_edge_total": 2506735,
+    "expected_vertex_total": 634292,
+    "failed_checks": [],
+    "observed_edge_total": 2506735,
+    "observed_vertex_total": 634292
+  }
+}

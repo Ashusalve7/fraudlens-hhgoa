@@ -4,6 +4,8 @@
 **Project:** HHGOA × TigerGraph — FraudLens  
 **Scope:** All project-owned Markdown, Python, GSQL, JSON case outputs, evaluation artifacts, pipeline files, dashboard source/build files, dependency manifests, and generated metadata. The large CSVs were profiled and queried programmatically. Vendored `node_modules` and `.venv` source was not treated as authored code; their manifests, installed versions, build behavior, and security implications were checked.
 
+> **Remediation status update (25 September 2026):** the findings below are retained as the original audit record. The P0/P1 remediation, regenerated artifacts, graph read-back gate, dashboard build, and release checks are complete; see [§13](#13-final-remediation-status) for the current release state. Historical readiness scores and stale examples in this audit must not be read as current measurements.
+
 ---
 
 ## 1. Executive verdict
@@ -1175,22 +1177,43 @@ Show:
 
 ---
 
-## 12. Final recommendation
+## 12. Final recommendation (historical audit snapshot)
 
-### Do not submit the current snapshot.
+### Do not submit the original snapshot.
 
-The strongest reason is not a missing stretch feature. It is that the repository currently allows a judge to verify these contradictions:
+The strongest reason is not a missing stretch feature. It is that the original repository allowed a judge to verify these contradictions:
 
 - “77.4%” versus 33.76% in the only evaluation artifact;
-- “11/9” versus 13/7 in the current cases;
+- “11/9” versus 13/7 in the original cases;
 - “$74.96 exposure exceeded $1,000” in a SAR;
 - “moved from verify” when the initial action was already block;
-- “secrets never committed” while a live-looking secret is in source;
-- “case memory” while historical case edges are zero and new cases are not retrieved;
-- “one-command run” while required artifacts are ignored and training output breaks inference;
-- “MCP-connected” while runtime code directly uses pyTigerGraph.
+- “secrets never committed” while a live-looking secret was in source;
+- “case memory” while historical case edges were zero and new cases were not retrieved;
+- “one-command run” while required artifacts were ignored and training output broke inference; and
+- “MCP-connected” while runtime code directly used pyTigerGraph.
 
-Fix those issues first. The underlying project is good enough to recover quickly, and the correct recovery strategy is **truthfulness, semantic correctness, and a clean demo path**, not more features.
+Those findings are preserved above as the reason for the remediation work. They are not claims about the regenerated snapshot.
 
-**Current readiness: 41/100 — promising prototype, not grand-finale-ready.**  
-**Potential after P0/P1 corrections: competitive range, but not guaranteed.**
+---
+
+## 13. Final remediation status
+
+### Verified release artifacts
+
+- The final 20-case pack passes `fraudlens/validator.py` locally and through MCP graph read-back: **20/20 valid** for both gates.
+- The final graph-health contract is **healthy**: **634,292 vertices** and **2,506,735 edges**, with zero static count or orphan failures and 20 managed `AgentCase` vertices.
+- The final serialized model reports holdout AUC **0.9822**, Platt Brier **0.0332**, post-shift Brier **0.0558**, customer-disjoint AUC **0.9703**, and exact production pattern agreement **0.2349**. The last value is explicitly a noisy-label diagnostic, not model accuracy.
+- The corrected global GDS degree-centrality artifact is recorded as provenance-only and is not used as case evidence or authorization input.
+- The frontend production build succeeds, Lighthouse reports accessibility **100**, best practices **100**, and SEO **100** on the queue, HHG-014, and analytics routes; the backend/static suites pass, Ruff passes, and npm reports zero known vulnerabilities.
+
+### Safety and truthfulness corrections
+
+- Credentials are read only from environment variables or ignored `fraudlens/.env`; source fails closed without them, and the secret scan passes.
+- Runtime investigation access is through the official MCP SDK over stdio with named tools; arbitrary GSQL and shell access are not exposed.
+- Investigations use `opened_at` as the evidence cutoff, preserve observed customer reports separately from simulated responses, exclude wholly unknown device profiles, and require structured corroboration before treating connected activity as fraud.
+- The model ranks likelihood; deterministic policy controls actions and approval routes. SAR drafts use structured facts only.
+- Stale claims and broken build assets were removed from the active documentation and production bundle. Exploratory analysis scripts and disposable local caches are kept outside the release repository in `Unnecssarythings/`; raw sponsor data and local dependencies remain ignored rather than being silently deleted.
+
+### Remaining manual release action
+
+The previously exposed cloud/static TigerGraph credential still authenticates and **must be rotated manually in the TigerGraph/Savanna console** before public distribution. The old database alias was revoked, but that does not rotate a cloud-console credential. The user should also record the final video and social links after reviewing the updated runbook. No remote push is performed automatically.

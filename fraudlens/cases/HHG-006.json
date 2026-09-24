@@ -3,7 +3,7 @@
   "case": {
     "status": "closed_fraud",
     "verdict": "fraud",
-    "fraud_probability": 0.9825,
+    "fraud_probability": 0.9987,
     "pattern": "card_not_present_new_device",
     "pattern_description": "",
     "affected_txn_ids": [
@@ -13,35 +13,48 @@
       "3476682"
     ],
     "first_suspicious_txn_id": "3476602",
-    "connected_card_ids": [
-      "C00094-K3",
-      "C00118-K1",
-      "C00134-K1",
-      "C00149-K1",
-      "C00180-K1",
-      "C00197-K1",
-      "C00230-K1",
-      "C00288-K1",
-      "C00329-K2",
-      "C00386-K1"
-    ],
-    "connected_device_profiles": [
-      "DP-7059dc480f51"
-    ],
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
     "exposure_usd": 1906.07,
     "evidence": [
       {
-        "claim": "Flagged transaction 3476682: $482.12 online (C) with model risk score 0.25 - a reason to look, not a verdict.",
+        "claim": "Flagged transaction 3476682: $482.12 online (C) with model risk score 0.25; the score is an investigation input, not a verdict.",
         "source": "graph",
-        "ref": "query:get_transaction_context",
+        "ref": "query:get_transaction_context(txn_id=3476682)",
         "entity_ids": [
           "3476682"
         ]
       },
       {
-        "claim": "Card window shows 4 transactions within +-24h of the trigger (sum $1,906.07); card's 30-day baseline mean ratio 4.04.",
+        "claim": "The bounded graph algorithm returned 1288 node(s) and 1547 observed edge(s); its scope is the returned relation set, not an unbounded global community.",
         "source": "graph",
-        "ref": "query:get_card_window",
+        "ref": "mcp:graph_ring(txn_id=3476682)",
+        "entity_ids": [
+          "3476682"
+        ]
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '1. Actions' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-03fa4768ea71e63a5e93d19e)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '3b. The next best action can change' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions. Rules: R1|R2.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-ef26c3d7a59d5e9d156f8029)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk 'Pattern 3: Card-not-present fraud from a new device.' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-338faa423d37c6394ea3039a)",
+        "entity_ids": []
+      },
+      {
+        "claim": "The bounded episode selected 4 transaction(s), totaling $1,906.07, from the card-window query run from 2016-09-22 20:30:00 through 2016-11-22 02:30:00.",
+        "source": "graph",
+        "ref": "query:get_card_window(start=2016-09-22 20:30:00, end=2016-11-22 02:30:00)",
         "entity_ids": [
           "3476602",
           "3476633",
@@ -50,39 +63,63 @@
         ]
       },
       {
-        "claim": "Device profile 3459672 links 543 cards including cards outside this customer's ownership.",
+        "claim": "The device-neighborhood query for DP-7059dc480f51 from 2016-11-15 02:30:00 through 2016-11-22 02:30:00 returned 19 card ID(s); device reuse alone is not treated as connected fraud.",
         "source": "graph",
-        "ref": "query:get_device_neighborhood",
+        "ref": "query:get_device_neighborhood(device_id=DP-7059dc480f51, start=2016-11-15 02:30:00, end=2016-11-22 02:30:00)",
         "entity_ids": [
-          "C06944-K1",
-          "C08999-K1",
-          "C03595-K1",
-          "C00679-K1",
-          "C07871-K1",
-          "C03598-K2",
-          "C08856-K1",
-          "C00854-K2",
-          "C02883-K2",
-          "C10520-K1"
+          "DP-7059dc480f51",
+          "C07297-K1",
+          "C11865-K1",
+          "C05560-K2",
+          "C10448-K1",
+          "C06976-K1",
+          "C05146-K1",
+          "C10842-K1",
+          "C08833-K1",
+          "C02859-K1",
+          "C07171-K2",
+          "C04108-K2",
+          "C00288-K1",
+          "C02716-K2",
+          "C01982-K2",
+          "C05868-K1",
+          "C07102-K1",
+          "C10349-K1",
+          "C09274-K1",
+          "C12150-K1",
+          "CC-5111",
+          "CC-3624",
+          "CC-3368",
+          "CC-1960",
+          "CC-1476",
+          "CC-0781"
         ]
       },
       {
-        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-0245, CC-3990, CC-4232).",
+        "claim": "Retrieved 3 nearest closed case(s) for pattern memory: CC-0347, CC-5124, CC-2580.",
         "source": "graph",
-        "ref": "query:find_similar_cases",
+        "ref": "query:find_similar_cases(pattern=card_not_present_new_device)",
         "entity_ids": [
-          "CC-0245",
-          "CC-3990",
-          "CC-4232"
+          "CC-0347",
+          "CC-5124",
+          "CC-2580"
+        ]
+      },
+      {
+        "claim": "The case trigger explicitly reports that the customer did not authorize the flagged transaction; no later interview is asserted.",
+        "source": "customer",
+        "ref": "trigger:customer_report",
+        "entity_ids": [
+          "3476682"
         ]
       }
     ],
     "similar_prior_cases": [
-      "CC-0245",
-      "CC-3990",
-      "CC-4232"
+      "CC-0347",
+      "CC-5124",
+      "CC-2580"
     ],
-    "summary": "Alert HHG-006: the customer reported an unrecognized purchase on transaction 3476682 ($482.12, online). Investigation supports card not present new device: 4 transaction(s) in the episode, exposure $1,906.07. The customer denied the transaction when asked. Device profile evidence connects this card to other cards. Probability 0.98.",
+    "summary": "Alert HHG-006: the customer reported an unauthorized purchase on transaction 3476682 ($482.12, online). Investigation supports card not present new device with 4 transaction(s) in the bounded episode and $1,906.07 exposure. The case trigger itself explicitly reports the customer did not authorize the transaction.",
     "written_to_graph": true,
     "graph_case_id": "AG-HHG-006"
   },
@@ -92,17 +129,17 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R1/R2: fraud probability 0.98 supported by independent graph evidence"
+        "reason": "R2: customer denied the transaction"
       },
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "R2: open internal case with evidence attached"
+        "reason": "R2: open an internal case with the evidence attached"
       },
       {
         "action": "FILE_REPORT",
         "route": "L2",
-        "reason": "3a: exposure > $1,000 or shared/undocumented link"
+        "reason": "R2/3a: exposure $1,906.07 exceeds $1,000"
       }
     ],
     "final": [
@@ -114,23 +151,24 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "R2: open internal case with the evidence attached"
+        "reason": "R2: open an internal case with the evidence attached"
       },
       {
         "action": "FILE_REPORT",
         "route": "L2",
-        "reason": "R2: exposure exceeds $1,000 or case connects to a shared element/other card's fraud"
+        "reason": "R2/3a: exposure $1,906.07 exceeds $1,000"
       }
     ],
-    "what_changed": "Customer denial raised probability from 0.98 to 0.98; recommendation moved from verify to block/case/report per R2."
+    "what_changed": "nothing"
   },
   "sar": {
     "file": true,
-    "reason": "3a/R2/R6/R9: exposure $1,906.07 exceeds $1,000",
-    "narrative": "On 2016-11-21, card C07297-K1 belonging to customer C07297 was used for 4 transaction(s) totaling $1,906.07, beginning with transaction 3476602 ($482.12, online channel). The activity is inconsistent with the cardholder's established pattern and is classified as card not present new device. Graph analysis linked the involved device profile and payment card to related activity on other cards within the same window, indicating a common origin across accounts. The cardholder was asked to validate the activity; the recorded response supported unauthorized use. Based on the exposure exceeding $1,000 and the connection to other compromised cards, the bank files this report on the described activity. Affected transactions: 3476602, 3476633, 3476665, 3476682.",
+    "reason": "3a: confirmed/strongly suspected fraud with exposure $1,906.07 above $1,000",
+    "narrative": "Between 2016-11-21 and 2016-11-21, customer C07297's card C07297-K1 showed 4 suspicious transaction(s) totaling $1,906.07. The first affected transaction was 3476602 on 2016-11-21 for $478.95 through the online channel in 264.0. The recorded pattern is card_not_present_new_device: online purchases used a New or proxied device signal and deviated from the baseline. The episode total of $1,906.07 exceeds the policy's $1,000 reporting threshold. Device profile DP-7059dc480f51 is recorded for the transaction; device reuse alone is not asserted to be fraud. The case trigger explicitly reported that the customer did not authorize the transaction; no later interview is asserted. The device signal combined with inconsistent online activity is suspicious. Affected transaction IDs: 3476602, 3476633, 3476665, 3476682.",
     "subjects": [
       "C07297",
-      "C07297-K1"
+      "C07297-K1",
+      "DP-7059dc480f51"
     ],
     "total_amount_usd": 1906.07,
     "activity_dates": [
@@ -138,19 +176,8 @@
       "2016-11-21"
     ]
   },
-  "stop_reason": "A verification response settled the question (policy 6).",
-  "tool_calls": 27,
+  "stop_reason": "Probability 1.00 is beyond the policy threshold with 3 independent evidence items (policy 6).",
+  "tool_calls": 9,
   "tokens": 0,
-  "latency_s": 4.08,
-  "_states": [
-    "TRIGGERED",
-    "CONTEXT_RETRIEVED",
-    "EVIDENCE_GATHERED",
-    "PATTERNS_ASSESSED",
-    "MEMORY_RETRIEVED",
-    "NBA_INITIAL",
-    "NBA_FINAL",
-    "CASE_WRITTEN",
-    "ANSWER_EXPORTED"
-  ]
+  "latency_s": 6.5376
 }

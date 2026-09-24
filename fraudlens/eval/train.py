@@ -126,11 +126,15 @@ def evaluate_pattern_detector(frame: pd.DataFrame) -> dict[str, Any]:
     predicted: list[str] = []
     truth: list[str] = []
     for _, row in frame.iterrows():
-        # The feature row also carries detector extras.  Passing it as the
-        # episode context mirrors runner._detector_context without consulting
-        # the precomputed predicted_pattern column.
-        features = {key: row.get(key) for key in frame.columns}
-        pattern, _ = detect_pattern(features, features)
+        # build_features stores the result of the exact production context
+        # (including the final episode signal overrides). Reuse that result
+        # rather than evaluating a flattened feature row through a different
+        # context shape. Older/external tables may still provide raw fields.
+        if "predicted_pattern" in frame.columns and str(row.get("predicted_pattern", "")):
+            pattern = str(row["predicted_pattern"])
+        else:
+            features = {key: row.get(key) for key in frame.columns}
+            pattern, _ = detect_pattern(features, features)
         predicted.append(pattern)
         truth.append(str(row.get("pattern", "none")))
     labels = sorted(set(PATTERNS) | set(truth) | set(predicted))
@@ -163,6 +167,15 @@ def evaluate_pattern_detector(frame: pd.DataFrame) -> dict[str, Any]:
         "confusion_matrix": matrix,
         "per_class": per_class,
         "cleared_none_accuracy": legit_accuracy,
+        "label_semantics": (
+            "Exact agreement with legacy closed-case pattern labels. These labels are "
+            "noisy historical guidance and are not the probability-model target."
+        ),
+        "interpretation": (
+            "A low value does not mean the calibrator failed; it means the conservative "
+            "production evidence rules intentionally reject many legacy labels that lack "
+            "the anomaly/corroboration required for an operational finding."
+        ),
     }
 
 
@@ -290,7 +303,11 @@ def fit_model(frame: pd.DataFrame) -> tuple[dict[str, Any], str]:
         "post_shift_holdout_auc": _finite_or_none(_safe_auc(y_test, p_test_final)),
         "customer_disjoint_auc": _finite_or_none(customer_auc),
         "reliability_holdout": _reliability(y_test, p_test_platt),
+        "model_target": "binary fraud likelihood (confirmed_fraud vs cleared)",
         "pattern_rule_acc": _finite_or_none(pattern_eval["accuracy"]),
+        "pattern_rule_acc_semantics": (
+            "diagnostic exact agreement with noisy legacy pattern labels; not model accuracy"
+        ),
         "pattern_evaluation": pattern_eval,
         "feature_schema_version": 2,
         "train_rows": int(len(train_idx)),

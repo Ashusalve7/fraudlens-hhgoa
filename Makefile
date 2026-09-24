@@ -1,7 +1,7 @@
-.PHONY: install check test lint frontend dashboard validate clean
+.PHONY: install check test lint frontend dashboard validate validate-graph clean
 
 install:
-	uv sync --project fraudlens --all-groups
+	uv sync --project fraudlens --all-groups --frozen
 	npm ci --prefix fraudlens/dashboard
 
 check:
@@ -9,7 +9,7 @@ check:
 	uv run --project fraudlens python scripts/check_dataset.py
 
 test:
-	uv run --project fraudlens pytest fraudlens/tests
+	uv run --project fraudlens pytest tests
 
 lint:
 	uv run --project fraudlens ruff check fraudlens scripts
@@ -19,6 +19,9 @@ frontend:
 
 validate:
 	uv run --project fraudlens python fraudlens/validator.py
+
+validate-graph:
+	uv run --project fraudlens python fraudlens/validator.py --check-graph
 
 dashboard:
 	uv run --project fraudlens uvicorn dashboard.app:app --app-dir fraudlens --host 127.0.0.1 --port 8000

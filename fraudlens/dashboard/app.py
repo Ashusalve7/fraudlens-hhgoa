@@ -28,6 +28,7 @@ import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import RLock
@@ -357,6 +358,8 @@ class Contribution(BaseModel):
 class ExplanationResponse(BaseModel):
     model: dict[str, Any]
     probability: float
+    base_model_probability: float | None = None
+    probability_basis: str = ""
     pattern: str
     contributions: list[Contribution]
     n_evidence: int
@@ -575,7 +578,20 @@ def _connection_for(evidence: Any) -> Any:
     if callable(ensure_conn):
         conn = ensure_conn()
     if conn is None:
-        raise RuntimeError("graph connection is not configured")
+        # The investigation adapter deliberately owns an MCP stdio client and
+        # does not expose its underlying connection. Dashboard health/count
+        # probes are read-only administrative operations, so use a separate
+        # cached pyTigerGraph connection here rather than weakening the MCP
+        # boundary for the agent.
+        conn = getattr(evidence, "_dashboard_conn", None)
+        if conn is None:
+            try:
+                from pipeline.tg import get_conn
+                conn = get_conn()
+            except Exception as exc:
+                raise RuntimeError("graph connection is not configured") from exc
+            with suppress(Exception):
+                evidence._dashboard_conn = conn
     return conn
 
 
@@ -754,6 +770,19 @@ def _spa_response() -> FileResponse:
         index_path,
         media_type="text/html",
         headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots() -> FileResponse:
+    """Serve the production crawler policy instead of the SPA fallback."""
+    path = DIST_DIR / "robots.txt"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(
+        path,
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "public, max-age=3600"},
     )
 
 
@@ -985,7 +1014,9 @@ def graph_ring(
         else:
             t0 = _parse_graph_datetime(txn.get("ts"))
             start = (t0 - timedelta(days=window_days)).strftime("%Y-%m-%d %H:%M:%S")
-            end = (t0 + timedelta(days=window_days)).strftime("%Y-%m-%d %H:%M:%S")
+            # The investigation contract is as-of the trigger; do not expose
+            # future transactions through the convenience traversal.
+            end = t0.strftime("%Y-%m-%d %H:%M:%S")
             neighborhood = evidence.device_neighborhood(device_id, start, end)
     except Exception as exc:
         _log_graph_failure("traversal", exc)
@@ -1042,7 +1073,7 @@ def _lock_for_explanation(key: Any) -> RLock:
 
 def _build_explanation(case_id: str, answer: dict[str, Any], case: dict[str, str]) -> dict[str, Any]:
     """Build an explanation after the case has been validated and cache-locked."""
-    from decision import EXAM_PRIOR, TEMP, detect_pattern
+    from decision import DEFAULT_TEMPERATURE, EXAM_PRIOR, Calibrator, detect_pattern
     from features import compute_features, episode_features
 
     flagged_txn_id = str(case.get("flagged_txn_id") or "").strip()
@@ -1056,29 +1087,44 @@ def _build_explanation(case_id: str, answer: dict[str, Any], case: dict[str, str
     if not isinstance(context, dict) or not isinstance(context.get("txn"), dict):
         raise ValueError("transaction context is unavailable")
     t0 = _parse_graph_datetime(context["txn"].get("ts"))
+    opened_at = _parse_graph_datetime(case.get("opened_at")) if case.get("opened_at") else t0
     card_rows = evidence.card_window(
         card_id,
         (t0 - timedelta(days=60)).strftime("%Y-%m-%d %H:%M:%S"),
-        (t0 + timedelta(hours=72)).strftime("%Y-%m-%d %H:%M:%S"),
+        opened_at.strftime("%Y-%m-%d %H:%M:%S"),
     )
     device = context.get("device")
     device_neighborhood = None
     if isinstance(device, dict) and device.get("device_id"):
         device_neighborhood = evidence.device_neighborhood(
             str(device["device_id"]),
-            (t0 - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S"),
-            (t0 + timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S"),
+            (opened_at - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S"),
+            opened_at.strftime("%Y-%m-%d %H:%M:%S"),
         )
 
-    features = compute_features(context, card_rows or [], device_neighborhood)
+    features = compute_features(
+        context,
+        card_rows or [],
+        device_neighborhood,
+        opened_at=opened_at,
+    )
     episode_rows = [
         row
         for row in (card_rows or [])
         if isinstance(row, dict) and _safe_row_in_window(row.get("ts"), t0, hours=24)
     ]
-    episode = episode_features(episode_rows, card_rows or [], t0)
+    episode = episode_features(
+        episode_rows,
+        card_rows or [],
+        t0,
+        cutoff=opened_at,
+    )
     pattern, _pattern_reason = detect_pattern(features, episode)
     model = json.loads(MODEL_PATH.read_text(encoding="utf-8"))
+    try:
+        _p_history, base_model_probability = Calibrator(model=model).score(features)
+    except Exception as exc:
+        raise ValueError("calibrator artifact cannot explain this feature row") from exc
 
     model_features = model.get("features") or []
     means = model.get("scaler_mean") or []
@@ -1157,9 +1203,14 @@ def _build_explanation(case_id: str, answer: dict[str, Any], case: dict[str, str
             "trained_on": "labeled closed-case history",
             "holdout_auc": round(float(model.get("holdout_auc") or 0), 3),
             "exam_prior": float(EXAM_PRIOR),
-            "temperature": float(TEMP),
+            "temperature": float(DEFAULT_TEMPERATURE),
         },
         "probability": answer_case["fraud_probability"],
+        "base_model_probability": round(float(base_model_probability), 4),
+        "probability_basis": (
+            "The final probability includes any separately recorded customer-response "
+            "likelihood update; the contribution table explains the pre-response model score."
+        ),
         "pattern": answer_case["pattern"],
         "contributions": contributions,
         "n_evidence": len(answer_case.get("evidence") or []),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -367,11 +368,13 @@ class CoreFakeEvidence:
         self.calls: list[dict] = []
         self.query_log: list[dict] = []
         self.case_id: str | None = None
+        self.written_payloads: list[dict] = []
 
     def begin_case(self, case_id: str) -> None:
         self.case_id = case_id
         self.calls = []
         self.query_log = []
+        self.written_payloads = []
 
     def _record(self, name: str, **params) -> None:
         record = {"query": name, "params": params}
@@ -389,6 +392,7 @@ class CoreFakeEvidence:
                 "channel": "online",
                 "product_cd": "C",
                 "risk_score": 0.5,
+                "addr1": "R1",
                 "device_id": "DP-1",
                 "id_15": "New",
             },
@@ -407,6 +411,7 @@ class CoreFakeEvidence:
                 "card_id": "C-1-K1",
                 "channel": "online",
                 "product_cd": "C",
+                "addr1": "R1",
             },
             {
                 "txn_id": flagged_id,
@@ -415,10 +420,25 @@ class CoreFakeEvidence:
                 "card_id": "C-1-K1",
                 "channel": "online",
                 "product_cd": "C",
+                "addr1": "R1",
                 "device_id": "DP-1",
                 "id_15": "New",
             },
         ]
+
+    def graph_ring(self, txn_id: str) -> dict:
+        self._record("get_graph_ring", in_txn_id=txn_id)
+        return {
+            "nodes": [
+                {"type": "Transaction", "id": txn_id},
+                {"type": "Card", "id": "C-1-K1"},
+                {"type": "DeviceProfile", "id": "DP-1"},
+            ],
+            "edges": [
+                {"source": txn_id, "target": "C-1-K1", "type": "PAID_WITH"},
+                {"source": txn_id, "target": "DP-1", "type": "FROM_DEVICE"},
+            ],
+        }
 
     def card_window(self, _card_id: str, _start: str, _end: str) -> list[dict]:
         self._record("get_card_window")
@@ -442,12 +462,30 @@ class CoreFakeEvidence:
         self._record("get_region_activity")
         return []
 
+    def policy_retrieval(self, _query: str, **_kwargs) -> dict:
+        self._record("policy_retrieval")
+        return {
+            "policies": [
+                {
+                    "chunk_id": "PC-TEST",
+                    "kind": "policy",
+                    "title": "Test policy",
+                    "text": "R1 verification policy",
+                    "score": 0.9,
+                    "provenance": {"policy_rule": "R1"},
+                }
+            ],
+            "cases": [],
+            "provenance": {"policy": {"remote": True, "source": "TigerGraph:PolicyChunk"}},
+        }
+
     def similar_cases(self, _pattern: str, _exposure: float) -> list[dict]:
         self._record("find_similar_cases")
         return []
 
-    def write_agent_case(self, payload: dict, *_args) -> str:
+    def write_agent_case(self, payload: dict, *_args, **kwargs) -> str:
         self._record("write_agent_case", case_id=payload["case_id"])
+        self.written_payloads.append({"payload": deepcopy(payload), "kwargs": deepcopy(kwargs)})
         return str(payload["case_id"])
 
 

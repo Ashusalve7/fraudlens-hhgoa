@@ -2,6 +2,8 @@
 
 A release is blocked if any required item is unchecked.
 
+**Current automated status (25 September 2026):** the regenerated 20-case pack passes local semantic and MCP graph read-back validation; graph health is healthy; Python tests, Ruff, frontend build, npm audit, and browser/Lighthouse checks pass. The remaining external actions are manual cloud credential rotation, final video/social links, and the final Git push.
+
 ## Source and credentials
 
 - [ ] `scripts/secret_scan.py` passes.
@@ -27,10 +29,12 @@ A release is blocked if any required item is unchecked.
 - [ ] Unknown/empty devices do not form a giant false shared-device component.
 - [ ] Device card/customer results obey the requested time window.
 - [ ] Every installed query compiles and passes positive, empty, boundary, and missing-ID contract tests.
+- [ ] `validator.py --check-graph` reads all 20 AgentCases and matches stored answers plus AG_TXN/AG_CARD/AG_DEVICE/AG_SIMILAR edges.
 - [ ] MCP tool traces are recorded in case audit data.
 - [ ] At least one graph algorithm result is visible and materially affects a recommendation.
+- [ ] Optional GDS package availability and the exact `gds_degree_centrality.json` provenance are recorded; global GDS output is not misrepresented as cutoff evidence.
 - [ ] GraphRAG returns a policy or case-note citation with provenance.
-- [ ] A newly generated AgentCase is retrievable and influences a later case when sufficiently similar.
+- [ ] Similar closed-case memory is visible and its independent-evidence contribution is explicit; newly generated AgentCases are retrievable with complete answers and exact outgoing edges.
 
 ## Investigation engine
 
@@ -78,7 +82,7 @@ A release is blocked if any required item is unchecked.
 ## Quality
 
 - [ ] `ruff check fraudlens scripts` passes.
-- [ ] `pytest fraudlens/tests` passes with the configured coverage floor.
+- [ ] `pytest tests --cov=fraudlens` passes with the configured 70% coverage floor.
 - [ ] Frontend production build passes without warnings that affect demo reliability.
 - [ ] `npm audit --audit-level=high` passes.
 - [ ] No authored test is skipped to make the suite green.

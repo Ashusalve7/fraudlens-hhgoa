@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import pytest
-
 from agent.decision import PATTERN_ENUM, detect_pattern
-from agent.features import compute_features, episode_features
+from agent.features import (
+    compute_features,
+    episode_features,
+    summarize_device_corroboration,
+)
 
 
 def base_features(**updates):
@@ -115,6 +118,38 @@ def test_compute_features_excludes_own_card_and_normal_identity_match():
     assert result["device_shared_cards_7d"] == 0
     assert result["m1_not_T"] == 0
     assert result["identity_anomaly"] == 0
+
+
+def test_generic_device_reuse_is_monitoring_not_fraud_corroboration():
+    device = {
+        "cards": [{"card_id": f"C{i}-K1"} for i in range(60)],
+        "customers": [{"customer_id": f"C{i}"} for i in range(60)],
+        "txns": [
+            {"txn_id": f"T{i}", "risk_score": 0.1, "id_15": "Known"}
+            for i in range(60)
+        ],
+        "prior_cases": [{"case_id": "OLD-1", "outcome": "confirmed_fraud"}],
+        "n_cards": 208,
+    }
+    result = summarize_device_corroboration(device, own_card_id="SUBJECT-K1")
+    assert result["monitoring_signal"] is True
+    assert result["corroborated"] is False
+
+
+def test_compact_anomalous_multicustomer_ring_is_corroborated():
+    device = {
+        "cards": [{"card_id": "C1-K1"}, {"card_id": "C2-K1"}, {"card_id": "C3-K1"}],
+        "customers": [{"customer_id": "C1"}, {"customer_id": "C2"}, {"customer_id": "C3"}],
+        "txns": [
+            {"txn_id": "T1", "id_15": "New", "id_23": "None", "risk_score": 0.1},
+            {"txn_id": "T2", "id_15": "Known", "id_23": "Anonymous proxy", "risk_score": 0.2},
+        ],
+        "prior_cases": [{"case_id": "OLD-1", "outcome": "confirmed_fraud"}],
+    }
+    result = summarize_device_corroboration(device, own_card_id="C1-K1", own_customer_id="C1")
+    assert result["corroborated"] is True
+    assert result["card_count"] == 2
+    assert result["anomaly_txn_count"] == 2
 
 
 def test_numeric_float_identity_mismatch_is_supported():

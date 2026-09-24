@@ -1,6 +1,6 @@
 # FraudLens five-minute video runbook
 
-Do not record the final video until the 20 regenerated answers, graph-health report, semantic validator, and production dashboard all pass. Use this runbook for structure, but replace every bracketed value with the final generated result.
+Do not record the final video until the 20 regenerated answers, graph-health report, semantic validator, and production dashboard all pass. The values in this runbook are copied from the final generated artifacts; recheck them if any case is regenerated.
 
 ## Recording setup
 
@@ -26,7 +26,7 @@ Do not record the final video until the 20 regenerated answers, graph-health rep
 
 > Risk scores are a reason to investigate, not a verdict. Fraud analysts need a defensible next action when identity evidence is incomplete and connected activity may cross accounts. FraudLens is a controlled investigation agent built on TigerGraph: it gathers graph evidence, retrieves policy and case memory, follows the bank's approval policy, and records the decision.
 
-**Do not say:** any verdict balance, SAR count, AUC, or accuracy number until it is copied from the final generated artifacts.
+**Do not say:** any verdict balance, SAR count, AUC, or accuracy number unless it is copied from the final generated artifacts.
 
 ## 0:30–1:30 — HHG-014 graph-native investigation
 
@@ -34,17 +34,15 @@ Do not record the final video until the 20 regenerated answers, graph-health rep
 
 **On screen:**
 
-1. Trigger: analyst request, low risk score, New device, anonymous proxy.
+1. Trigger: analyst request, risk score `0.05`, New device, anonymous proxy.
 2. Open the graph near the top of the case.
-3. Show actual time window, transaction/card counts, and explicit `+N more` nodes.
-4. Open the graph-algorithm evidence card.
-5. Show the policy-grounded decision.
+3. Show the actual time window, **255 returned nodes / 338 observed edges**, and explicit `+4 more` truncation.
+4. Open the device-neighborhood evidence: **19 card IDs and 4 prior confirmed-fraud cases** before the cutoff.
+5. Show the policy-grounded `CREATE_CASE`, `ESCALATE_TO_ANALYST`, and `FILE_REPORT` recommendation on the **L2** approval route.
 
 **Voiceover:**
 
-> This alert scored only [risk score], so a score-only system would miss it. The transaction used a New device behind an anonymous proxy. TigerGraph traverses from the transaction to the shared device, then to the connected cards and prior case context. The connected-component/shared-neighbor result gives [algorithm fact], which changes the recommendation from ordinary verification to [final action/reason].
-
-If the final review supports the undocumented ring, name the coordinated pattern and its evidence. Do not force a documented label for the demo.
+> This alert's source risk score was only 0.05, so a score-only system would miss it. TigerGraph traverses from the transaction to the shared device and then to the connected cards and prior case context. The bounded ring returned 255 nodes and 338 observed edges, and the pre-cutoff device neighborhood returned 19 cards plus four prior confirmed-fraud cases. That corroboration supports an undocumented coordinated-abuse pattern and routes the report to a human; it is not an autonomous filing or a claim that every shared device is a fraud ring.
 
 ## 1:30–2:20 — Evidence changes the action
 
@@ -59,9 +57,7 @@ If the final review supports the undocumented ring, name the coordinated pattern
 
 **Voiceover:**
 
-> Before new evidence, the model recommends [initial actions] under policy R1. The customer response is not available in this benchmark, so FraudLens simulates one and records that assumption explicitly. The independent response changes the assessment to [final actions]. The card block is only recommended; it routes to L1 rather than executing autonomously.
-
-Use HHG-002 only if its final regenerated output actually changes actions. Otherwise choose another verified before/after case.
+> Before the recorded response, the policy snapshot recommends verify, step-up authentication, and create-case at an initial probability of 0.53. The customer response is not available in this benchmark, so FraudLens simulates a confirmation and records that assumption explicitly. The final probability is 0.1225 and the final action is close-no-fraud, with the three initial actions removed. The dashboard records the change; it does not execute it.
 
 ## 2:20–3:00 — Policy, confidence, and approval
 
@@ -69,17 +65,17 @@ Use HHG-002 only if its final regenerated output actually changes actions. Other
 
 **Voiceover:**
 
-> The dashboard separates fraud likelihood from evidence confidence and decision readiness. A high likelihood is not treated as automatic authorization. The deterministic policy engine selects actions from R1 through R10, preserves exact approval routes, and prevents the agent from executing L1 or L2 actions.
+> The dashboard separates fraud likelihood from evidence confidence and decision readiness. A high likelihood is not automatic authorization. The deterministic policy engine selects actions from R1 through R10, preserves exact approval routes, and prevents the agent from executing L1 or L2 actions. HHG-006 demonstrates an L1 block recommendation; HHG-014 demonstrates an L2 report recommendation.
 
 **Do not say:** “agent confidence” if the displayed metric is fraud probability.
 
 ## 3:00–3:40 — Graph case memory and SAR grounding
 
-**On screen:** graph case ID, evidence/case timeline, similar case outcomes, SAR Draft.
+**On screen:** graph case ID, evidence/case timeline state, similar-case outcomes, SAR Draft.
 
 **Voiceover:**
 
-> The completed investigation is written back to TigerGraph with its evidence relationships, actions, approval state, and structured case summary. [Similar case] has outcome [outcome] and similarity [fact], which [did/did not] influence this decision. The report is labeled a draft and cites only facts present in the evidence bundle.
+> The completed investigation is written back to TigerGraph with its evidence relationships, complete answer, and exact AG edges. HHG-014 retrieves three similar closed cases and records their influence; its report is labeled a draft and cites only structured facts. Its filing basis is corroborated connected-card fraud, not the $74.96 amount.
 
 If RAG is implemented and verified, show one retrieved policy/analyst-note citation here. Otherwise do not claim GraphRAG.
 
@@ -89,19 +85,17 @@ If RAG is implemented and verified, show one retrieved policy/analyst-note citat
 
 **Voiceover:**
 
-> The pipeline validates the 590,742-row dataset, derives card identities, verifies the graph schema and edge counts, executes MCP allow-listed tools, evaluates the exact production pattern registry, and validates all 20 answer files semantically. The final time-held-out AUC is [value], exact pattern accuracy is [value], and [N/20] answers pass the release gate.
-
-Only show values generated after the final clean run.
+> The pipeline validates the 590,742-row dataset, derives card identities, verifies 634,292 graph vertices and 2,506,735 edges, executes MCP allow-listed tools, evaluates the exact production pattern registry, and validates all 20 answers semantically and by graph read-back. The final time-held-out AUC is 0.9822, the customer-disjoint diagnostic AUC is 0.9703, and exact agreement with noisy legacy pattern labels is 0.2349. Those are separate measurements; 20 of 20 answers pass both release validators.
 
 ## 4:20–4:50 — Innovation and controlled autonomy
 
-**On screen:** uncertainty/request flow or optional night-watch output.
+**On screen:** uncertainty/request flow and approval state.
 
 **Voiceover:**
 
 > The differentiator is not a larger risk model. It is an uncertainty-aware investigator: it distinguishes missing evidence from contradictory evidence, requests the least-invasive useful evidence, routes high-impact actions to humans, and learns from graph-native case memory.
 
-If night-watch is not implemented and verified, omit it.
+Do not claim night-watch mode or autonomous filing.
 
 ## 4:50–5:00 — Close
 
@@ -117,6 +111,7 @@ Record these separately before the final take:
 - HHG-014 full graph with truncation indicator;
 - policy/approval matrix;
 - semantic validator passing 20/20;
+- MCP graph read-back validator passing 20/20;
 - graph-health panel with expected versus actual counts;
 - test suite and frontend build;
 - final architecture diagram.

@@ -8,7 +8,6 @@ merely because it appears in the source table.
 
 from __future__ import annotations
 
-import hashlib
 import sys
 from pathlib import Path
 from typing import Any
@@ -32,6 +31,8 @@ except ImportError:  # package context
     from agent.decision import MODEL_FEATURES, detect_pattern  # type: ignore
     from agent.features import compute_features, episode_features  # type: ignore
 
+from pipeline.build_load_files import device_profile_id  # noqa: E402
+
 FEATURES = list(MODEL_FEATURES)
 TXN_COLS = [
     "TransactionID",
@@ -47,17 +48,19 @@ TXN_COLS = [
 ]
 
 
-def device_profile_id(device_info: Any, os_: Any, browser: Any, screen: Any) -> str:
-    key = "|".join(str(x) for x in (device_info, os_, browser, screen))
-    return "DP-" + hashlib.md5(key.encode()).hexdigest()[:12]
-
-
 def _as_datetime(value: Any) -> pd.Timestamp:
     return pd.Timestamp(value)
 
 
 def _clean(value: Any) -> str:
     return "" if pd.isna(value) or str(value) in {"nan", "None"} else str(value)
+
+
+def _id_token(value: Any) -> str:
+    text = str(value).strip()
+    if text.endswith(".0") and text[:-2].isdigit():
+        text = text[:-2]
+    return "" if text.lower() in {"", "nan", "none"} else text
 
 
 def _load_transactions() -> pd.DataFrame:
@@ -84,6 +87,8 @@ def _load_transactions() -> pd.DataFrame:
     ]
     tx = tx.merge(ident[["TransactionID", "id_15", "id_23", "device_id"]], on="TransactionID", how="left")
     card_map = pd.read_parquet(HERE.parent / "pipeline" / "out" / "txn_card_map.parquet")
+    tx["TransactionID"] = tx["TransactionID"].astype(str)
+    card_map["TransactionID"] = card_map["TransactionID"].astype(str)
     tx = tx.merge(card_map[["TransactionID", "card_id", "customer_id"]], on="TransactionID", how="inner")
     tx["ts"] = pd.to_datetime(tx["ts"], errors="coerce")
     tx["amount"] = pd.to_numeric(tx["TransactionAmt"], errors="coerce").fillna(0.0)
@@ -119,7 +124,9 @@ def build_feature_table() -> pd.DataFrame:
             sorted(
                 set(
                     tx.loc[
-                        tx["TransactionID"].isin([int(v) for v in str(t).split("|") if str(v).isdigit()]),
+                        tx["TransactionID"].isin(
+                            [_id_token(v) for v in str(t).split("|") if _id_token(v)]
+                        ),
                         "device_id",
                     ]
                 )
@@ -147,15 +154,15 @@ def build_feature_table() -> pd.DataFrame:
         opened = case["opened_at"]
         if pd.isna(opened):
             continue
-        ids = [int(v) for v in str(case["txn_ids"]).split("|") if str(v).strip().isdigit()]
+        ids = [_id_token(v) for v in str(case["txn_ids"]).split("|") if _id_token(v)]
         if not ids:
             continue
         card = groups.get(str(case["card_id"]))
         if card is None:
             continue
-        trigger_id = pd.to_numeric(pd.Series([case.get("first_fraud_txn_id")]), errors="coerce").iloc[0]
-        t0_id = int(trigger_id) if pd.notna(trigger_id) and int(trigger_id) in ids else ids[0]
-        flagged = card[card["TransactionID"] == t0_id]
+        trigger_id = _id_token(case.get("first_fraud_txn_id"))
+        t0_id = trigger_id if trigger_id in ids else ids[0]
+        flagged = card[card["TransactionID"].astype(str) == t0_id]
         if flagged.empty:
             continue
         t0 = flagged.iloc[0]["ts"]
@@ -170,6 +177,7 @@ def build_feature_table() -> pd.DataFrame:
             dg = device_groups[device_id]
             near = dg[(dg["ts"] >= t0 - pd.Timedelta(days=7)) & (dg["ts"] <= opened)]
             dev["txns"] = [_row_dict(r) for _, r in near.iterrows()]
+            dev["n_cards"] = int(dg["card_id"].nunique())
             dev["cards"] = [
                 {"card_id": str(v)} for v in sorted(near["card_id"].dropna().astype(str).unique())
             ]
@@ -183,7 +191,11 @@ def build_feature_table() -> pd.DataFrame:
                 and r["opened_at"] <= opened
                 and r["case_id"] != str(case["case_id"])
             ]
-        ctx = {"txn": _row_dict(t0_row), "card": {"card_id": str(case["card_id"])}}
+        ctx = {
+            "txn": _row_dict(t0_row),
+            "card": {"card_id": str(case["card_id"])},
+            "customer_id": str(case["customer_id"]),
+        }
         card_dicts = [_row_dict(row) for _, row in card_rows.iterrows()]
         feats = compute_features(ctx, card_dicts, dev, opened_at=opened)
         ep = episode_features(card_dicts, card_dicts, t0.to_pydatetime(), cutoff=opened)
@@ -202,14 +214,14 @@ def build_feature_table() -> pd.DataFrame:
         ):
             if key in ep:
                 feats[key] = ep[key]
-        # Device corroboration is an explicit production detector signal.
-        confirmed_priors = [r for r in dev["prior_cases"] if str(r.get("outcome")) == "confirmed_fraud"]
-        feats["connected_fraud_cases"] = len(confirmed_priors)
-        feats["connected_corroboration"] = int(bool(confirmed_priors and len(dev["cards"]) > 1))
-        feats["cross_customer"] = int(len(dev["customers"]) > 1)
-        feats["coordinated_signal"] = int(feats["connected_corroboration"] and len(dev["cards"]) > 1)
+        # Device corroboration is computed by the exact inference helper.  A
+        # legacy confirmed case plus generic profile reuse is not enough.
+        feats["connected_fraud_cases"] = int(feats.get("connected_fraud_cases", 0))
+        feats["connected_corroboration"] = int(feats.get("connected_corroboration", 0))
+        feats["cross_customer"] = int(feats.get("cross_customer", 0))
+        feats["coordinated_signal"] = int(feats.get("coordinated_signal", 0))
         predicted, _why = detect_pattern(feats, ep)
-        visible_ids = set(int(v) for v in card_rows["TransactionID"].dropna().astype(int))
+        visible_ids = set(card_rows["TransactionID"].dropna().astype(str))
         visible_episode = card_rows[
             card_rows["TransactionID"].isin(ids) & card_rows["TransactionID"].isin(visible_ids)
         ]

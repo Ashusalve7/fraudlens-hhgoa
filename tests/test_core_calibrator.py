@@ -6,7 +6,6 @@ import math
 
 import pandas as pd
 import pytest
-
 from agent.decision import MODEL_FEATURES, Calibrator
 from eval.train import fit_model
 

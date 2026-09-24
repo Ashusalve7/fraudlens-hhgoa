@@ -41,7 +41,7 @@ def embed_text(text: str) -> np.ndarray:
     # character trigrams provide stable recall for spelling variants.
     for token in tokens:
         _add_feature(vector, f"w:{token}")
-    for left, right in zip(tokens, tokens[1:]):
+    for left, right in zip(tokens, tokens[1:], strict=False):
         _add_feature(vector, f"b:{left}|{right}", 0.65)
     padded = f"  {' '.join(tokens)}  "
     for i in range(len(padded) - 2):

@@ -20,6 +20,8 @@ CODE_PATTERNS = (
     "fraudlens/mcp/**/*.py",
     "fraudlens/dashboard/app.py",
     "fraudlens/dashboard/src/**/*",
+    "fraudlens/dashboard/public/**/*",
+    "fraudlens/dashboard/dist/**/*",
     "fraudlens/pyproject.toml",
     "fraudlens/uv.lock",
     "fraudlens/dashboard/package.json",
@@ -52,7 +54,7 @@ def file_record(path: Path, hash_data: bool) -> dict[str, object]:
         "path": path.relative_to(ROOT).as_posix(),
         "bytes": path.stat().st_size,
     }
-    if hash_data or "cases" in path.parts or path.suffix in {".py", ".gsql", ".toml", ".lock", ".json", ".jsx", ".js", ".css", ".html"}:
+    if hash_data or "cases" in path.parts or path.suffix in {".py", ".gsql", ".toml", ".lock", ".json", ".txt", ".jsx", ".js", ".css", ".html"}:
         record["sha256"] = sha256(path)
     return record
 
@@ -84,7 +86,13 @@ def main() -> int:
         path = ROOT / rel
         if path.is_file():
             paths[str(path)] = path
-    for rel in ("fraudlens/eval/out/model.json", "fraudlens/pipeline/out/graph_health.json"):
+    for rel in (
+        "fraudlens/eval/out/model.json",
+        "fraudlens/eval/out/eval_report.txt",
+        "fraudlens/pipeline/out/graph_health.json",
+        "fraudlens/pipeline/out/gds_check.json",
+        "fraudlens/pipeline/out/gds_degree_centrality.json",
+    ):
         path = ROOT / rel
         if path.is_file():
             paths[str(path)] = path

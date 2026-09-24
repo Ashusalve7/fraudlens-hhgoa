@@ -104,6 +104,46 @@ def test_cnp_episode_excludes_rows_beyond_48_hours():
     assert episode_ids(episode) == ["flagged", "inside"]
 
 
+def test_new_device_cnp_does_not_expand_a_burst_without_device_anomaly():
+    flagged = txn("flagged", "2016-12-10 12:00:00", 500, id_15="New", device_id="DP-1")
+    rows = [
+        txn("ordinary-1", "2016-12-10 10:00:00", 100, id_15="Found", device_id="DP-2"),
+        txn("ordinary-2", "2016-12-10 11:00:00", 100, id_15="Found", device_id="DP-2"),
+        flagged,
+    ]
+    episode = build_episode(
+        flagged,
+        rows,
+        "card_not_present_new_device",
+        {
+            "n_online_48h": 3,
+            "online_burst_48h": True,
+            "new_dev_share": 0.0,
+            "proxy_share": 0.0,
+            "amt_ratio_30d": 4.0,
+        },
+        cutoff="2016-12-11",
+    )
+    assert episode_ids(episode) == ["flagged"]
+
+
+def test_coordinated_undocumented_case_keeps_its_online_burst():
+    flagged = txn("flagged", "2016-12-10 12:00:00", 500, id_15="New", device_id="DP-1")
+    rows = [
+        txn("near-1", "2016-12-10 10:00:00", 450, id_15="New", device_id="DP-1"),
+        txn("near-2", "2016-12-10 11:00:00", 450, id_15="New", device_id="DP-1"),
+        flagged,
+    ]
+    episode = build_episode(
+        flagged,
+        rows,
+        "undocumented",
+        {"coordinated_signal": 1, "n_online_48h": 3, "online_burst_48h": 1},
+        cutoff="2016-12-11",
+    )
+    assert episode_ids(episode) == ["near-1", "near-2", "flagged"]
+
+
 def test_out_of_region_episode_never_pulls_home_activity():
     flagged = txn("flagged", "2016-12-10 12:00:00", 100, channel="in_person", addr1="R2")
     rows = [

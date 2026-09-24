@@ -1,0 +1,60 @@
+{
+  "algorithm": "GDBMS_ALGO.centrality.degree_cent",
+  "directed": true,
+  "edge_type": "FROM_DEVICE",
+  "normalized": true,
+  "note": "This global ranking is an offline graph-quality signal. Case decisions continue to use bounded observed evidence and deterministic policy.",
+  "provenance": {
+    "package": "GDBMS_ALGO.centrality",
+    "query": "degree_cent",
+    "ran_at": "2026-09-24T22:22:39.533758+00:00",
+    "source": "TigerGraph packaged GDS query"
+  },
+  "reverse_edge_type": "rev_FROM_DEVICE",
+  "scope": "global graph; not a case-cutoff result",
+  "scores": [
+    {
+      "score": 0.6546785,
+      "vertex_id": "DP-5df6b386ed14"
+    },
+    {
+      "score": 0.5115416,
+      "vertex_id": "DP-d38078e4c2ce"
+    },
+    {
+      "score": 0.3342951,
+      "vertex_id": "DP-233a5498fbaa"
+    },
+    {
+      "score": 0.3232687,
+      "vertex_id": "DP-b549e3332ff3"
+    },
+    {
+      "score": 0.2926628,
+      "vertex_id": "DP-f579527f435b"
+    },
+    {
+      "score": 0.264427,
+      "vertex_id": "DP-b0667ce7885a"
+    },
+    {
+      "score": 0.260202,
+      "vertex_id": "DP-e5abac3b7b12"
+    },
+    {
+      "score": 0.15777,
+      "vertex_id": "DP-12ca029d11a0"
+    },
+    {
+      "score": 0.1467436,
+      "vertex_id": "DP-5dc26abe1ab1"
+    },
+    {
+      "score": 0.1464345,
+      "vertex_id": "DP-5d79db752cb6"
+    }
+  ],
+  "top_k": 10,
+  "used_in_decision": false,
+  "vertex_type": "DeviceProfile"
+}

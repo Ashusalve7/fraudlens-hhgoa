@@ -98,6 +98,7 @@ def test_threshold_customer_and_shared_link_claims_are_conditional():
     )
     assert "C2-K1" in connected["narrative"]
     assert "corroborated connected-card fraud" in connected["narrative"]
+    assert "threshold" not in connected["narrative"].lower()
     assert "C2-K1" in connected["subjects"]
 
 

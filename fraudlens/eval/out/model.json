@@ -24,16 +24,16 @@
     0.0033549005511622335,
     1.4239743714848248,
     0.08507069254732806,
-    0.24685272248476461,
-    0.012168686287956736,
-    40.48957584471603,
-    0.17565300742870837,
-    4.261202971483345,
-    0.7730649412892403,
-    0.04255266252093015,
-    0.46417445482866043,
+    0.36061305049860826,
+    0.04259877332697246,
+    27.279415288761083,
+    0.16870357057272944,
+    4.3254253534627365,
+    0.5271986580397795,
+    0.11898556275905575,
+    0.5178528636472561,
     0.0,
-    12.49916127486221
+    11.01078360891445
   ],
   "scaler_scale": [
     284.12680068810147,
@@ -42,44 +42,221 @@
     0.05782426128757759,
     2.585069223663724,
     0.27898686316177335,
-    0.3314258091197288,
-    0.0927287934129163,
-    75.91663165624206,
-    0.38052467516569605,
-    9.999320474888355,
-    0.418850257059374,
-    0.24713314521952334,
-    0.49871487877661747,
+    0.3953827836138987,
+    0.17645452848563237,
+    52.99508769555351,
+    0.3744898875119882,
+    11.85257787543763,
+    0.4992596849344389,
+    0.3527089102193175,
+    0.4996811736093251,
     1.0,
-    28.17958417134796
+    24.181984938704858
   ],
   "coef": [
-    -0.7784923544227096,
-    -0.518590512340941,
-    -5.508159426905942,
-    0.09440827699403351,
-    -0.11297629552683597,
-    0.01072381574899367,
-    -1.067767034083435,
-    -0.1486316748768881,
-    -0.23113280936660643,
-    -0.49898726954459915,
-    0.05859970729209731,
-    -0.2710870603874914,
-    -0.24619536785348936,
-    0.08469529267440139,
+    -0.6421913848193368,
+    -0.6683720328795569,
+    -5.18313686678385,
+    0.06654128643673211,
+    -0.24814284575908888,
+    0.03798916313643823,
+    -1.0229558630928388,
+    0.06892889440493707,
+    -0.2681038336217466,
+    -0.49142951411821706,
+    3.1931981081115444,
+    -0.15106400639962356,
+    -0.24810465509152996,
+    0.03759081741441801,
     0.0,
-    0.03913258360032977
+    0.06303665811589823
   ],
-  "intercept": 6.919253580302839,
+  "intercept": 7.268214828034632,
   "platt": {
-    "mean": 6.922939015690649,
-    "std": 6.2541586926909245,
-    "w": 6.5961156092195745,
-    "b": 7.2933826357417875
+    "mean": 7.1727829276763035,
+    "std": 6.428892441967462,
+    "w": 6.922043317416378,
+    "b": 7.726573558900506,
+    "low": -3.8688451027283524,
+    "high": 22.246056550014263
   },
-  "holdout_auc": 0.9752454165860134,
-  "holdout_brier": 0.03966394579924278,
-  "pattern_rule_acc": 0.33762057877813506,
-  "train_base_rate": 0.8190750059908939
+  "train_base_rate": 0.8190750059908939,
+  "exam_base_rate": 0.5,
+  "temperature": 1.5,
+  "response_likelihood": {
+    "denied": 8.0,
+    "confirmed": 0.125,
+    "no_response": 1.0
+  },
+  "holdout_auc": 0.9822304565439816,
+  "holdout_brier": 0.03319713012422845,
+  "post_shift_holdout_brier": 0.055791456768803205,
+  "post_shift_holdout_auc": 0.9822304565439816,
+  "customer_disjoint_auc": 0.9702656525573191,
+  "reliability_holdout": [
+    {
+      "lower": 0.0,
+      "upper": 0.125,
+      "n": 58,
+      "mean_probability": 0.05676643909827462,
+      "observed_rate": 0.10344827586206896
+    },
+    {
+      "lower": 0.125,
+      "upper": 0.25,
+      "n": 31,
+      "mean_probability": 0.18983831926527311,
+      "observed_rate": 0.12903225806451613
+    },
+    {
+      "lower": 0.25,
+      "upper": 0.375,
+      "n": 21,
+      "mean_probability": 0.3113942005252308,
+      "observed_rate": 0.3333333333333333
+    },
+    {
+      "lower": 0.375,
+      "upper": 0.5,
+      "n": 26,
+      "mean_probability": 0.4461478782256475,
+      "observed_rate": 0.5
+    },
+    {
+      "lower": 0.5,
+      "upper": 0.625,
+      "n": 20,
+      "mean_probability": 0.5601923823288878,
+      "observed_rate": 0.5
+    },
+    {
+      "lower": 0.625,
+      "upper": 0.75,
+      "n": 32,
+      "mean_probability": 0.6992118469737074,
+      "observed_rate": 0.5625
+    },
+    {
+      "lower": 0.75,
+      "upper": 0.875,
+      "n": 38,
+      "mean_probability": 0.8082606302303023,
+      "observed_rate": 0.7368421052631579
+    },
+    {
+      "lower": 0.875,
+      "upper": 1.0,
+      "n": 1166,
+      "mean_probability": 0.9929590101056162,
+      "observed_rate": 0.9957118353344768
+    }
+  ],
+  "model_target": "binary fraud likelihood (confirmed_fraud vs cleared)",
+  "pattern_rule_acc": 0.2348607367475292,
+  "pattern_rule_acc_semantics": "diagnostic exact agreement with noisy legacy pattern labels; not model accuracy",
+  "pattern_evaluation": {
+    "n": 5565,
+    "accuracy": 0.2348607367475292,
+    "confusion_matrix": {
+      "account_takeover": {
+        "account_takeover": 0,
+        "card_not_present_fraud": 2,
+        "card_not_present_new_device": 60,
+        "card_testing": 0,
+        "none": 1117,
+        "out_of_region_use": 6,
+        "undocumented": 20
+      },
+      "card_not_present_fraud": {
+        "account_takeover": 0,
+        "card_not_present_fraud": 167,
+        "card_not_present_new_device": 350,
+        "card_testing": 2,
+        "none": 568,
+        "out_of_region_use": 0,
+        "undocumented": 317
+      },
+      "card_not_present_new_device": {
+        "account_takeover": 0,
+        "card_not_present_fraud": 31,
+        "card_not_present_new_device": 622,
+        "card_testing": 2,
+        "none": 232,
+        "out_of_region_use": 0,
+        "undocumented": 189
+      },
+      "card_testing": {
+        "account_takeover": 0,
+        "card_not_present_fraud": 1,
+        "card_not_present_new_device": 10,
+        "card_testing": 0,
+        "none": 0,
+        "out_of_region_use": 0,
+        "undocumented": 5
+      },
+      "none": {
+        "account_takeover": 0,
+        "card_not_present_fraud": 0,
+        "card_not_present_new_device": 384,
+        "card_testing": 0,
+        "none": 461,
+        "out_of_region_use": 6,
+        "undocumented": 49
+      },
+      "out_of_region_use": {
+        "account_takeover": 0,
+        "card_not_present_fraud": 0,
+        "card_not_present_new_device": 0,
+        "card_testing": 0,
+        "none": 901,
+        "out_of_region_use": 54,
+        "undocumented": 0
+      },
+      "undocumented": {
+        "account_takeover": 0,
+        "card_not_present_fraud": 1,
+        "card_not_present_new_device": 4,
+        "card_testing": 0,
+        "none": 1,
+        "out_of_region_use": 0,
+        "undocumented": 3
+      }
+    },
+    "per_class": {
+      "account_takeover": {
+        "support": 1205,
+        "recall": 0.0
+      },
+      "card_not_present_fraud": {
+        "support": 1404,
+        "recall": 0.11894586894586895
+      },
+      "card_not_present_new_device": {
+        "support": 1076,
+        "recall": 0.5780669144981413
+      },
+      "card_testing": {
+        "support": 16,
+        "recall": 0.0
+      },
+      "none": {
+        "support": 900,
+        "recall": 0.5122222222222222
+      },
+      "out_of_region_use": {
+        "support": 955,
+        "recall": 0.05654450261780105
+      },
+      "undocumented": {
+        "support": 9,
+        "recall": 0.3333333333333333
+      }
+    },
+    "cleared_none_accuracy": 0.5122222222222222,
+    "label_semantics": "Exact agreement with legacy closed-case pattern labels. These labels are noisy historical guidance and are not the probability-model target.",
+    "interpretation": "A low value does not mean the calibrator failed; it means the conservative production evidence rules intentionally reject many legacy labels that lack the anomaly/corroboration required for an operational finding."
+  },
+  "feature_schema_version": 2,
+  "train_rows": 4173,
+  "holdout_rows": 1392
 }

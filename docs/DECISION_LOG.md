@@ -39,3 +39,15 @@ The report builder may state an exposure threshold, shared origin, customer resp
 ## ADR-010 — The dashboard is an analyst workspace
 
 The UI prioritizes evidence, uncertainty, policy, approvals, and auditability over decorative charts. “Fraud likelihood,” “evidence confidence,” and “decision readiness” are distinct concepts and must be labeled independently.
+
+## ADR-011 — Historical pattern labels are noisy guidance, not ground truth
+
+The calibrated model is trained for binary fraud likelihood (`confirmed_fraud` versus `cleared`). Exact agreement with legacy `closed_cases_history.pattern` is reported as a diagnostic, not presented as model accuracy. Several historical labels assign broad fraud patterns to ordinary or established activity; the production detector intentionally requires anomaly and corroboration evidence before taking an operational branch.
+
+## ADR-012 — Policy retrieval is grounded, not authoritative
+
+TigerGraph `PolicyChunk` retrieval supplies ranked policy text and provenance for each investigation. The deterministic R1–R10 implementation remains the only action authority; a retrieval score can never authorize a block, report, or route.
+
+## ADR-013 — AgentCase writes are replaceable and auditable
+
+A case write stores the complete exported answer, replaces prior `AG_*` edges for that case, and records explicit similarity scores only for retrieved prior cases. A failed write is reported as `written_to_graph: false`; the local answer is never presented as remotely persisted.

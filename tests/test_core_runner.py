@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 
 from runner import (
@@ -19,6 +20,13 @@ def test_investigation_output_integrates_the_strict_json_schema(
     assert schema_problems(answer) == []
     assert answer["case"]["written_to_graph"] is True
     assert answer["case"]["graph_case_id"] == "AG-HHG-001"
+    persisted = core_fake_evidence.written_payloads[0]["payload"]["answer_json"]
+    assert json.loads(persisted) == answer
+    assert any(
+        item["ref"].startswith("mcp:policy_retrieval/")
+        or item["ref"].startswith("mcp:policy_retrieval(")
+        for item in answer["case"]["evidence"]
+    )
 
 
 def test_investigation_output_passes_strict_semantic_validation(
@@ -45,7 +53,7 @@ def test_investigation_output_passes_strict_semantic_validation(
         customer_ids={"C-1"},
         device_ids={"DP-1"},
     )
-    assert validate_answer(answer, runner_case, context, expected_tool_calls=6) == []
+    assert validate_answer(answer, runner_case, context, expected_tool_calls=9) == []
 
 
 def test_tool_ledger_and_request_step_are_case_local(core_fake_evidence, static_calibrator, runner_case):
@@ -53,9 +61,9 @@ def test_tool_ledger_and_request_step_are_case_local(core_fake_evidence, static_
     second_case = {**runner_case, "case_id": "HHG-002", "flagged_txn_id": "T-3"}
     second = investigate(core_fake_evidence, static_calibrator, second_case)
 
-    assert first["tool_calls"] == second["tool_calls"] == 6
-    assert first["evidence_requests"][0]["asked_after_step"] == 5
-    assert second["evidence_requests"][0]["asked_after_step"] == 5
+    assert first["tool_calls"] == second["tool_calls"] == 9
+    assert first["evidence_requests"][0]["asked_after_step"] == 8
+    assert second["evidence_requests"][0]["asked_after_step"] == 8
     assert all(
         0 <= request["asked_after_step"] <= first["tool_calls"] for request in first["evidence_requests"]
     )

@@ -10,6 +10,7 @@ Do not open a public issue containing credentials, customer data, exploit payloa
 - Never place a real workspace URL, username, password, secret, API token, MCP token, or cloud credential in source, notebooks, screenshots, logs, videos, or committed `.env` files.
 - Rotate a TigerGraph secret immediately after it has appeared in any source-controlled or shared file.
 - The dashboard binds to loopback by default. Configure `FRAUDLENS_API_TOKEN` and terminate TLS before exposing it beyond a trusted local machine.
+- The MCP boundary exposes only named evidence and case-memory tools. It does not expose arbitrary GSQL, shell, filesystem, or secret-reading operations. Treat `case_write` as a controlled application write and review its audit ledger.
 
 ## Data handling
 

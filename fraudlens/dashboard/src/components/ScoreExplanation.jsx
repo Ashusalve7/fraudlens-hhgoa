@@ -73,6 +73,9 @@ export default function ScoreExplanation({ explanationResource, caseRecord }) {
             The API returned a logistic-model explanation for this case. Feature contributions show
             each value’s push in log-odds; they are not independent proof of fraud.
           </p>
+          {explanation.probability_basis && (
+            <p className="simulation-note">{explanation.probability_basis}</p>
+          )}
 
           {model && (
             <dl className="model-facts" aria-label="Model metadata returned by the API">
@@ -83,6 +86,10 @@ export default function ScoreExplanation({ explanationResource, caseRecord }) {
               <div>
                 <dt>Reported holdout AUC</dt>
                 <dd>{formatDecimal(model.holdout_auc, 3)}</dd>
+              </div>
+              <div>
+                <dt>Base model probability</dt>
+                <dd>{formatPercent(explanation.base_model_probability)}</dd>
               </div>
               <div>
                 <dt>Exam prior</dt>

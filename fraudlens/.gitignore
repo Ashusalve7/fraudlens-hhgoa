@@ -18,6 +18,9 @@ pipeline/out/*
 !pipeline/out/load_log.json
 !pipeline/out/graph_counts.json
 !pipeline/out/graph_health.json
+!pipeline/out/load_manifest.json
+!pipeline/out/gds_check.json
+!pipeline/out/gds_degree_centrality.json
 
 # Keep the small trained model and reports; rebuild the larger feature table.
 eval/out/*
@@ -28,4 +31,5 @@ eval/out/*
 dashboard/node_modules/
 dashboard/.vite/
 dashboard/.playwright-cli/
+cases/.case-staging-*/
 *.log

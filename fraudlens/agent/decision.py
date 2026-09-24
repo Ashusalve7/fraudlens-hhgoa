@@ -759,11 +759,7 @@ def next_best_actions(
         add_r10_if_allowed()
         return acts
 
-    high_confidence_fraud = bool(
-        confirmed_fraud
-        or strong_fraud_evidence
-        or (p >= 0.85 and independent >= 2 and pattern not in {"none", "undocumented"})
-    )
+    high_confidence_fraud = bool(confirmed_fraud or strong_fraud_evidence)
     if high_confidence_fraud:
         add(
             "BLOCK_CARD",
@@ -777,7 +773,7 @@ def next_best_actions(
         add_r10_if_allowed()
         return acts
 
-    if p <= 0.15 and independent >= 2:
+    if p <= 0.15 and independent >= 2 and pattern != "none":
         add("CLOSE_NO_FRAUD", f"R1: probability {p:.2f} at or below 0.15 with independent evidence")
         return acts
 

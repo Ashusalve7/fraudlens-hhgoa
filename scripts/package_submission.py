@@ -18,6 +18,7 @@ EXCLUDED_PARTS = {
     ".ruff_cache",
     "load",
     "HHGOA_IEEE",
+    "Unnecssarythings",
 }
 EXCLUDED_NAMES = {".env"}
 EXCLUDED_SUFFIXES = {".pyc", ".log", ".parquet"}

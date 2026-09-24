@@ -1,82 +1,87 @@
 {
   "case_id": "HHG-020",
   "case": {
-    "status": "closed_fraud",
-    "verdict": "fraud",
-    "fraud_probability": 0.9692,
-    "pattern": "card_not_present_new_device",
+    "status": "escalated",
+    "verdict": "uncertain",
+    "fraud_probability": 0.8674,
+    "pattern": "none",
     "pattern_description": "",
-    "affected_txn_ids": [
-      "3509359"
-    ],
-    "first_suspicious_txn_id": "3509359",
-    "connected_card_ids": [
-      "C00094-K3",
-      "C00328-K1",
-      "C00375-K1",
-      "C00704-K1",
-      "C00750-K2",
-      "C00768-K2",
-      "C00773-K2",
-      "C00796-K1",
-      "C00818-K1",
-      "C00849-K1"
-    ],
-    "connected_device_profiles": [
-      "DP-d3a0af5dcc0b"
-    ],
-    "exposure_usd": 125.08,
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "Flagged transaction 3509359: $125.08 online (R) with model risk score 0.52 - a reason to look, not a verdict.",
+        "claim": "Flagged transaction 3509359: $125.08 online (R) with model risk score 0.52; the score is an investigation input, not a verdict.",
         "source": "graph",
-        "ref": "query:get_transaction_context",
+        "ref": "query:get_transaction_context(txn_id=3509359)",
         "entity_ids": [
           "3509359"
         ]
       },
       {
-        "claim": "Card window shows 1 transactions within +-24h of the trigger (sum $125.08); card's 30-day baseline mean ratio 1.21.",
+        "claim": "The bounded graph algorithm returned 833 node(s) and 940 observed edge(s); its scope is the returned relation set, not an unbounded global community.",
         "source": "graph",
-        "ref": "query:get_card_window",
+        "ref": "mcp:graph_ring(txn_id=3509359)",
         "entity_ids": [
           "3509359"
         ]
       },
       {
-        "claim": "Device profile 3489717 links 253 cards including cards outside this customer's ownership.",
+        "claim": "Retrieved sponsor policy chunk '1. Actions' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
         "source": "graph",
-        "ref": "query:get_device_neighborhood",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-03fa4768ea71e63a5e93d19e)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '3. Rules' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions. Rules: R1|R10|R2|R3|R4|R5|R6|R7|R8|R9.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-52b8f607470089c2ed45765b)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '3b. The next best action can change' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions. Rules: R1|R2.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-ef26c3d7a59d5e9d156f8029)",
+        "entity_ids": []
+      },
+      {
+        "claim": "The bounded episode selected 1 transaction(s), totaling $125.08, from the card-window query run from 2016-10-04 06:04:26 through 2016-12-03 12:04:26.",
+        "source": "graph",
+        "ref": "query:get_card_window(start=2016-10-04 06:04:26, end=2016-12-03 12:04:26)",
         "entity_ids": [
-          "C00849-K1",
+          "3509359"
+        ]
+      },
+      {
+        "claim": "The device-neighborhood query for DP-d3a0af5dcc0b from 2016-11-26 12:04:26 through 2016-12-03 12:04:26 returned 17 card ID(s); device reuse alone is not treated as connected fraud.",
+        "source": "graph",
+        "ref": "query:get_device_neighborhood(device_id=DP-d3a0af5dcc0b, start=2016-11-26 12:04:26, end=2016-12-03 12:04:26)",
+        "entity_ids": [
+          "DP-d3a0af5dcc0b",
           "C00854-K2",
-          "C07871-K1",
-          "C09358-K1",
-          "C03089-K1",
-          "C04968-K1",
-          "C08687-K1",
-          "C03040-K2",
-          "C05782-K2",
-          "C08746-K1"
-        ]
-      },
-      {
-        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-0245, CC-2450, CC-3990).",
-        "source": "graph",
-        "ref": "query:find_similar_cases",
-        "entity_ids": [
-          "CC-0245",
-          "CC-2450",
-          "CC-3990"
+          "C08374-K1",
+          "C12265-K2",
+          "C09301-K2",
+          "C05546-K1",
+          "C11637-K1",
+          "C02171-K1",
+          "C07969-K1",
+          "C01419-K1",
+          "C12166-K2",
+          "C03182-K1",
+          "C00989-K1",
+          "C06220-K1",
+          "C02716-K2",
+          "C10390-K1",
+          "C07612-K1",
+          "C12961-K2"
         ]
       }
     ],
-    "similar_prior_cases": [
-      "CC-0245",
-      "CC-2450",
-      "CC-3990"
-    ],
-    "summary": "Alert HHG-020: the model scored it 0.52 on transaction 3509359 ($125.08, online). Investigation supports card not present new device: 1 transaction(s) in the episode, exposure $125.08. Device profile evidence connects this card to other cards. Probability 0.97.",
+    "similar_prior_cases": [],
+    "summary": "Alert HHG-020: the model scored transaction 3509359 at 0.52 ($125.08, online). The evidence remains uncertain with fraud probability 0.87; the alert is escalated rather than treated as a confirmed fraud finding.",
     "written_to_graph": true,
     "graph_case_id": "AG-HHG-020"
   },
@@ -84,51 +89,50 @@
   "next_best_actions": {
     "initial": [
       {
-        "action": "BLOCK_CARD",
-        "route": "L1",
-        "reason": "R1/R2: fraud probability 0.97 supported by independent graph evidence"
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: probability 0.87 does not satisfy the high-confidence blocking rule"
+      },
+      {
+        "action": "STEP_UP_AUTH",
+        "route": "auto",
+        "reason": "R1: use step-up authentication as the lower-impact alternative"
       },
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "R2: open internal case with evidence attached"
+        "reason": "3a: open a case when probability reaches 0.30 or evidence is collected"
       }
     ],
     "final": [
       {
-        "action": "BLOCK_CARD",
-        "route": "L1",
-        "reason": "R1/R2: fraud probability 0.97 supported by independent graph evidence"
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: probability 0.87 does not satisfy the high-confidence blocking rule"
+      },
+      {
+        "action": "STEP_UP_AUTH",
+        "route": "auto",
+        "reason": "R1: use step-up authentication as the lower-impact alternative"
       },
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "R2: open internal case with evidence attached"
+        "reason": "3a: open a case when probability reaches 0.30 or evidence is collected"
       }
     ],
     "what_changed": "nothing"
   },
   "sar": {
     "file": false,
-    "reason": "3a: case only - exposure under $1,000, no shared or undocumented link (most cases never need a report)",
+    "reason": "3a: no report without confirmed or strongly suspected fraud",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Probability 0.97 beyond the 0.85/0.15 thresholds with 4 independent evidence items (policy 6).",
-  "tool_calls": 94,
+  "stop_reason": "The remaining uncertainty requires a human decision or additional evidence; the probability threshold has only 1 independent evidence item(s), below the required two (policy 6).",
+  "tool_calls": 9,
   "tokens": 0,
-  "latency_s": 4.16,
-  "_states": [
-    "TRIGGERED",
-    "CONTEXT_RETRIEVED",
-    "EVIDENCE_GATHERED",
-    "PATTERNS_ASSESSED",
-    "MEMORY_RETRIEVED",
-    "NBA_INITIAL",
-    "NBA_FINAL",
-    "CASE_WRITTEN",
-    "ANSWER_EXPORTED"
-  ]
+  "latency_s": 5.7031
 }

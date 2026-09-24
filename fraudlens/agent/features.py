@@ -77,6 +77,104 @@ def _within(ts: datetime | None, start: datetime, end: datetime) -> bool:
     return ts is not None and start <= ts <= end
 
 
+# A profile shared by hundreds of cards is a common browser/device population,
+# not a compact fraud ring.  The corroboration gate therefore requires both a
+# bounded cross-customer neighborhood and repeated anomaly evidence.
+MAX_CORROBORATION_CARDS = 50
+MAX_TOTAL_DEVICE_CARDS = 100
+MIN_CORROBORATION_CARDS = 2
+MIN_DEVICE_ANOMALY_TXNS = 2
+
+
+def summarize_device_corroboration(
+    dev: Mapping[str, Any] | None,
+    *,
+    own_card_id: str = "",
+    own_customer_id: str = "",
+) -> dict[str, Any]:
+    """Summarize device evidence without treating generic reuse as fraud.
+
+    Device reuse is a monitoring lead.  It becomes connected-fraud evidence
+    only when a compact neighborhood spans customers, has repeated New/proxy or
+    high-risk activity, and links to at least one prior confirmed case observed
+    by the case cutoff.
+    """
+    payload = dict(dev or {})
+    cards: set[str] = set()
+    for row in payload.get("cards", []) or []:
+        value = _field(row, "card_id", "id", "v_id", default="") if isinstance(row, Mapping) else row
+        text = str(value or "").strip()
+        if text not in {"", "_NA_", "nan"}:
+            cards.add(text)
+    for row in payload.get("txns", []) or []:
+        if not isinstance(row, Mapping):
+            continue
+        value = _field(row, "card_id", "CardID", default="")
+        text = str(value or "").strip()
+        if text not in {"", "_NA_", "nan"}:
+            cards.add(text)
+    if own_card_id:
+        cards.discard(str(own_card_id))
+
+    customers: set[str] = set()
+    for row in payload.get("customers", []) or []:
+        value = (
+            _field(row, "customer_id", "id", "v_id", default="")
+            if isinstance(row, Mapping)
+            else row
+        )
+        text = str(value or "").strip()
+        if text not in {"", "_NA_", "nan"}:
+            customers.add(text)
+    if own_customer_id:
+        customers.discard(str(own_customer_id))
+
+    reported_cards = payload.get("n_cards")
+    card_count = len(cards)
+    total_card_count = card_count + (1 if own_card_id else 0)
+    if reported_cards is not None:
+        total_card_count = _int(reported_cards)
+        if not card_count:
+            card_count = max(total_card_count - (1 if own_card_id else 0), 0)
+
+    prior_cases = [dict(row) for row in payload.get("prior_cases", []) or [] if isinstance(row, Mapping)]
+    confirmed_cases = [
+        row
+        for row in prior_cases
+        if str(_field(row, "outcome", default="")).strip().lower() == "confirmed_fraud"
+    ]
+    device_txns = [dict(row) for row in payload.get("txns", []) or [] if isinstance(row, Mapping)]
+    anomaly_txns = [
+        row
+        for row in device_txns
+        if is_new_device(row)
+        or is_proxy(row)
+        or _float(_field(row, "risk_score", default=0.0)) >= 0.75
+    ]
+    compact = (
+        MIN_CORROBORATION_CARDS <= card_count <= MAX_CORROBORATION_CARDS
+        and total_card_count <= MAX_TOTAL_DEVICE_CARDS
+    )
+    corroborated = bool(
+        compact
+        and len(customers) >= 2
+        and confirmed_cases
+        and len(anomaly_txns) >= MIN_DEVICE_ANOMALY_TXNS
+    )
+    return {
+        "cards": sorted(cards),
+        "customers": sorted(customers),
+        "fraud_cases": confirmed_cases,
+        "card_count": card_count,
+        "total_card_count": total_card_count,
+        "customer_count": len(customers),
+        "anomaly_txn_count": len(anomaly_txns),
+        "compact_neighborhood": compact,
+        "corroborated": corroborated,
+        "monitoring_signal": bool(card_count >= 2 and len(customers) >= 2),
+    }
+
+
 def compute_features(
     ctx: Mapping[str, Any],
     card_rows: Iterable[Mapping[str, Any]],
@@ -132,39 +230,22 @@ def compute_features(
     flagged_proxy = int(is_proxy(txn))
 
     dev = dict(dev or {})
-    device_cards: set[str] = set()
-    for row in dev.get("cards", []) or []:
-        value = _field(row, "card_id", "id", "v_id", default="") if isinstance(row, Mapping) else row
-        if value not in (None, "", "_NA_"):
-            device_cards.add(str(value))
-    for row in dev.get("txns", []) or []:
-        if isinstance(row, Mapping):
-            value = _field(row, "card_id", "CardID", default="")
-            if value not in (None, "", "_NA_"):
-                device_cards.add(str(value))
     own_card = str(_field(txn, "card_id", "cardId", default=""))
     card_context = ctx.get("card")
     if not own_card and isinstance(card_context, Mapping):
         own_card = str(_field(card_context, "card_id", "id", default=""))
     if not own_card:
         own_card = str(_field(ctx, "card_id", default=""))
-    device_cards.discard(own_card)
-    reported_other_cards: int | None = None
-    if not device_cards and dev.get("n_cards") is not None:
-        reported_other_cards = max(_int(dev.get("n_cards")) - 1, 0)
-    device_customers: set[str] = set()
-    for row in dev.get("customers", []) or []:
-        value = _field(row, "customer_id", "id", "v_id", default="") if isinstance(row, Mapping) else row
-        if value not in (None, "", "_NA_"):
-            device_customers.add(str(value))
-    prior_cases = [dict(r) for r in (dev.get("prior_cases", []) or []) if isinstance(r, Mapping)]
-    connected_fraud_cases = [
-        r for r in prior_cases if str(_field(r, "outcome", default="")).lower() == "confirmed_fraud"
-    ]
-    device_card_count = len(device_cards) if device_cards else (reported_other_cards or 0)
-    connected_corroboration = bool(
-        connected_fraud_cases and (device_card_count >= 1 or len(device_customers) >= 2)
+    own_customer = str(_field(ctx, "customer_id", default=""))
+    device_summary = summarize_device_corroboration(
+        dev,
+        own_card_id=own_card,
+        own_customer_id=own_customer,
     )
+    device_card_count = int(device_summary["card_count"])
+    device_customers = set(device_summary["customers"])
+    connected_fraud_cases = list(device_summary["fraud_cases"])
+    connected_corroboration = bool(device_summary["corroborated"])
 
     region = str(_field(txn, "addr1", "region", default=""))
     prior_regions = {str(_field(r, "addr1", "region", default="")) for r in hist60}
@@ -279,6 +360,10 @@ def compute_features(
         "connected_corroboration": int(connected_corroboration),
         "coordinated_signal": coordinated_signal,
         "cross_customer": int(len(device_customers) >= 2),
+        "device_anomaly_txns": int(device_summary["anomaly_txn_count"]),
+        "device_total_cards": int(device_summary["total_card_count"]),
+        "device_neighborhood_compact": int(device_summary["compact_neighborhood"]),
+        "device_monitoring_signal": int(device_summary["monitoring_signal"]),
         "device_id": txn_device_id(txn) or str(_field(dev, "device_id", default="")),
     }
     # Ensure all numeric values are JSON/Parquet friendly.
@@ -423,4 +508,4 @@ def episode_features(
     }
 
 
-__all__ = ["compute_features", "episode_features"]
+__all__ = ["compute_features", "episode_features", "summarize_device_corroboration"]

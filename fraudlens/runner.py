@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import shutil
 import sys
+import tempfile
 import time
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timedelta
@@ -45,8 +48,18 @@ from episodes import (  # noqa: E402
     txn_ts,
 )
 from evidence import Evidence  # noqa: E402
-from features import compute_features, episode_features  # noqa: E402
+from features import (  # noqa: E402
+    compute_features,
+    episode_features,
+    summarize_device_corroboration,
+)
 from sar import build_sar as _build_sar  # noqa: E402
+
+from validator import (  # noqa: E402
+    ValidationContext,
+    validate_files,
+    validate_graph_files,
+)
 
 DATA = HERE.parent / "HHGOA_IEEE"
 CASES_DIR = HERE / "cases"
@@ -205,25 +218,11 @@ def _simulate_response(p: float, pattern: str, similar_ids: list[str]) -> tuple[
 
 
 def _shared_fact(dev: Mapping[str, Any], card_id: str, customer_id: str) -> dict[str, Any]:
-    cards: list[str] = []
-    for row in dev.get("cards", []) or []:
-        value = _field(row, "card_id", "id", default=row if isinstance(row, str) else "")
-        if value and str(value) != card_id:
-            cards.append(str(value))
-    customers: list[str] = []
-    for row in dev.get("customers", []) or []:
-        value = _field(row, "customer_id", "id", default=row if isinstance(row, str) else "")
-        if value and str(value) != customer_id:
-            customers.append(str(value))
-    prior = [r for r in (dev.get("prior_cases", []) or []) if isinstance(r, Mapping)]
-    fraud_cases = [r for r in prior if str(_field(r, "outcome", default="")).lower() == "confirmed_fraud"]
-    corroborated = bool(fraud_cases and (cards or customers))
-    return {
-        "cards": sorted(set(cards)),
-        "customers": sorted(set(customers)),
-        "fraud_cases": fraud_cases,
-        "corroborated": corroborated,
-    }
+    return summarize_device_corroboration(
+        dev,
+        own_card_id=card_id,
+        own_customer_id=customer_id,
+    )
 
 
 def _count_independent(
@@ -284,7 +283,7 @@ def _detector_context(
         feats["customer_denied"] = True
     if shared:
         feats["connected_fraud"] = bool(shared.get("corroborated"))
-        feats["cross_customer"] = bool(shared.get("customers"))
+        feats["cross_customer"] = len(shared.get("customers", [])) >= 2
         feats["coordinated_signal"] = bool(shared.get("corroborated") and len(shared.get("cards", [])) >= 1)
     return feats, candidate, preliminary_ep
 
@@ -337,6 +336,39 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         txn["device_id"] = device_id
     state.append("CONTEXT_RETRIEVED")
 
+    # The bounded graph algorithm is part of the decision evidence, not just a
+    # dashboard decoration.  It confirms that the device/card path is present in
+    # the returned relation set before shared-device corroboration can affect a
+    # recommendation.
+    ring_result = ev.graph_ring(flagged_id)
+    ring_nodes = [
+        dict(node)
+        for node in ring_result.get("nodes", [])
+        if isinstance(node, Mapping)
+    ] if isinstance(ring_result, Mapping) else []
+    ring_edges = [
+        dict(edge)
+        for edge in ring_result.get("edges", [])
+        if isinstance(edge, Mapping)
+    ] if isinstance(ring_result, Mapping) else []
+    if not ring_nodes:
+        raise ValueError(f"{case_id}: bounded graph ring returned no nodes")
+    ring_device_ids = {
+        str(node.get("id"))
+        for node in ring_nodes
+        if str(node.get("type", "")).lower() == "deviceprofile"
+    }
+    ring_card_ids = {
+        str(node.get("id"))
+        for node in ring_nodes
+        if str(node.get("type", "")).lower() == "card"
+    }
+    algorithm_support = bool(
+        ring_edges
+        and (not device_id or device_id in ring_device_ids)
+        and (not card_id or card_id in ring_card_ids)
+    )
+
     # 2. Evidence queries: every end boundary is the case opening timestamp.
     card_start = min(t0 - timedelta(days=60), opened_at - timedelta(days=60))
     card_rows = list(ev.card_window(card_id, _fmt_ts(card_start), _fmt_ts(opened_at)))
@@ -357,6 +389,10 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
             )
         )
         dev.setdefault("device_id", device_id)
+        device_context = ctx.get("device") if isinstance(ctx.get("device"), Mapping) else {}
+        for field in ("n_cards", "n_txn", "device_info", "os", "browser", "screen"):
+            if field in device_context:
+                dev.setdefault(field, device_context[field])
     region = str(_field(txn, "addr1", "region", default=""))
     if region:
         # The result is intentionally not merged: card_window is the complete
@@ -395,6 +431,9 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         cutoff=opened_at,
     )
     shared = _shared_fact(dev, card_id, customer_id)
+    shared["algorithm_support"] = algorithm_support
+    if shared.get("corroborated") and not algorithm_support:
+        shared["corroborated"] = False
     explicit_denial = _case_trigger_denial(case) and not recurrence.get("is_monthly", False)
     feats, _preliminary, preliminary_ep = _detector_context(
         ctx,
@@ -417,7 +456,7 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         # An analyst-requested shared-device investigation with a prior
         # confirmed case is the concrete R9 path, not a generic device claim.
         feats["coordinated_signal"] = True
-        feats["cross_customer"] = bool(shared.get("customers")) or len(shared.get("cards", [])) >= 2
+        feats["cross_customer"] = len(shared.get("customers", [])) >= 2 or len(shared.get("cards", [])) >= 2
 
     pattern, pattern_why = detect_pattern(feats, preliminary_ep)
     # The explicit R7 discriminator takes precedence over a pattern label.
@@ -425,6 +464,29 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
     if r7:
         pattern, pattern_why = "none", "R7: approximately monthly same-card recurring charge"
     state.append("PATTERNS_ASSESSED")
+
+    policy_memory = ev.policy_retrieval(
+        (
+            f"{_field(case, 'trigger_text', default='Review suspicious transaction')} "
+            f"Pattern {pattern}. Determine the FraudLens policy response, evidence needs, "
+            "approval routes, and escalation requirements."
+        ),
+        pattern=pattern,
+        txn_id=flagged_id,
+        card_id=card_id,
+        customer_id=customer_id,
+        device_id=device_id,
+        limit=8,
+    )
+    policy_chunks = [
+        dict(item)
+        for item in policy_memory.get("policies", [])
+        if isinstance(item, Mapping) and item.get("chunk_id")
+    ]
+    policy_provenance = policy_memory.get("provenance", {}).get("policy", {})
+    if not policy_chunks or not policy_provenance.get("remote"):
+        raise RuntimeError(f"{case_id}: graph-backed PolicyChunk retrieval is unavailable")
+    state.append("POLICY_RETRIEVED")
 
     # 4. Memory lookup and final bounded episode ---------------------------
     episode_seed = build_episode(txn, card_rows, pattern, feats, cutoff=opened_at)
@@ -465,11 +527,18 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
     # explicit without changing the model artifact.
     connected_fraud = bool(shared.get("corroborated"))
     coordinated = bool(feats.get("coordinated_signal") and connected_fraud)
+    strong_fraud_evidence = bool(
+        connected_fraud and pattern in {"card_not_present_new_device", "undocumented"}
+    )
     exposure_seed = round(sum(txn_amount(row) for row in episode), 2)
     if not exposure_seed and txn_id(txn):
         exposure_seed = round(txn_amount(txn), 2)
     similar_cases = list(ev.similar_cases(pattern, exposure_seed))[:3]
     similar_ids = [str(r.get("case_id")) for r in similar_cases if r.get("case_id")]
+    # Memory can inform the response scenario, but a generic similar-case row
+    # must not independently settle a case when the production pattern registry
+    # found no pattern-specific evidence.
+    memory_evidence = similar_cases if pattern != "none" else []
     state.append("MEMORY_RETRIEVED")
 
     evidence_requests: list[dict[str, Any]] = []
@@ -494,7 +563,7 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
             connected_fraud=connected_fraud,
             coordinated=False,
             n_independent=_count_independent(
-                episode, customer_denied=False, shared=shared, similar_rows=similar_cases
+                episode, customer_denied=False, shared=shared, similar_rows=memory_evidence
             ),
             verdict="uncertain",
             r7=True,
@@ -522,14 +591,14 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
             connected_fraud=connected_fraud,
             coordinated=False,
             n_independent=_count_independent(
-                episode, customer_denied=False, shared=shared, similar_rows=similar_cases
+                episode, customer_denied=False, shared=shared, similar_rows=memory_evidence
             ),
             verdict="legitimate",
             r7=False,
         )
     else:
         n_independent_initial = _count_independent(
-            episode, customer_denied=explicit_denial, shared=shared, similar_rows=similar_cases
+            episode, customer_denied=explicit_denial, shared=shared, similar_rows=memory_evidence
         )
         initial = next_best_actions(
             p_initial,
@@ -546,9 +615,7 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
             coordinated=coordinated,
             n_independent=n_independent_initial,
             verdict="uncertain",
-            strong_fraud_evidence=bool(
-                connected_fraud and pattern in {"card_not_present_new_device", "undocumented"}
-            ),
+            strong_fraud_evidence=strong_fraud_evidence,
         )
         if _should_request(initial, p_initial, pattern, str(case.get("trigger_type", ""))):
             scenario_kind, scenario_reason = _simulate_response(p_initial, pattern, similar_ids)
@@ -577,12 +644,10 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
             connected_fraud=connected_fraud,
             coordinated=coordinated,
             n_independent=_count_independent(
-                episode, customer_denied=customer_denied, shared=shared, similar_rows=similar_cases
+                episode, customer_denied=customer_denied, shared=shared, similar_rows=memory_evidence
             ),
             verdict="fraud" if customer_denied else "uncertain",
-            strong_fraud_evidence=bool(
-                connected_fraud and pattern in {"card_not_present_new_device", "undocumented"}
-            ),
+            strong_fraud_evidence=strong_fraud_evidence,
         )
     state.append("NBA_INITIAL" if not evidence_requests else "EVIDENCE_REQUESTED")
     if evidence_requests:
@@ -591,7 +656,7 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
 
     # 5. Verdict, episode, and SAR ------------------------------------------
     n_independent = _count_independent(
-        episode, customer_denied=customer_denied, shared=shared, similar_rows=similar_cases
+        episode, customer_denied=customer_denied, shared=shared, similar_rows=memory_evidence
     )
     if r7 or customer_confirmed:
         verdict, status = "legitimate", "closed_legitimate"
@@ -599,13 +664,18 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         first_suspicious = ""
         output_pattern = "none"
         output_exposure = 0.0
-    elif customer_denied or (p_final >= 0.85 and n_independent >= 2 and pattern != "none"):
+    elif customer_denied or (
+        p_final >= 0.85
+        and n_independent >= 2
+        and pattern != "none"
+        and (strong_fraud_evidence or connected_fraud or coordinated)
+    ):
         verdict, status = "fraud", "closed_fraud"
         affected = [txn_id(r) for r in episode if txn_id(r)]
         first_suspicious = episode_bounds(episode)[0]
         output_pattern = pattern
         output_exposure = round(sum(txn_amount(r) for r in episode), 2)
-    elif p_initial <= 0.15 and n_independent >= 2:
+    elif p_initial <= 0.15 and n_independent >= 2 and pattern != "none":
         verdict, status = "legitimate", "closed_legitimate"
         affected, first_suspicious = [], ""
         output_pattern, output_exposure = "none", 0.0
@@ -620,7 +690,11 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
             affected, first_suspicious = [], ""
             output_exposure = 0.0
 
-    connected_cards = list(shared.get("cards", [])) if connected_fraud or coordinated else []
+    connected_cards = (
+        sorted(str(value) for value in shared.get("cards", []) if value)[:50]
+        if connected_fraud or coordinated
+        else []
+    )
     device_profiles = [device_id] if device_id and (connected_fraud or coordinated) else []
     sar_file, sar_reason = should_file_sar(
         verdict,
@@ -656,6 +730,8 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         device_id=device_id,
         customer_report_denial=explicit_denial,
         connected_fraud=connected_fraud,
+        policy_chunks=policy_chunks,
+        graph_ring=ring_result,
         cutoff=opened_at,
     )
     summary = build_summary(
@@ -676,36 +752,6 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
     what_changed = describe_change(initial, final, customer_denied, customer_confirmed, p_initial, p_final)
     stop, _settled = stop_reason(p_final, n_independent, bool(evidence_requests))
 
-    graph_case_id = f"AG-{case_id}"
-    written = False
-    try:
-        if hasattr(ev, "write_agent_case"):
-            graph_case_id = ev.write_agent_case(
-                {
-                    "case_id": graph_case_id,
-                    "verdict": verdict,
-                    "pattern": output_pattern,
-                    "pattern_description": pattern_why if output_pattern == "undocumented" else "",
-                    "fraud_probability": round(float(p_final), 4),
-                    "exposure_usd": round(float(output_exposure), 2),
-                    "status": status,
-                    "opened_at": _fmt_ts(opened_at),
-                    "stop_reason": stop,
-                    "summary": summary,
-                    "answer_json": "exported",
-                },
-                affected[:50],
-                [card_id, *connected_cards[:10]],
-                device_profiles,
-                similar_ids,
-            )
-            written = True
-    except Exception:
-        # A graph write failure must be visible in the answer rather than being
-        # represented as a successful write.  The caller can retry safely.
-        written = False
-    state.append("CASE_WRITTEN")
-
     sar = build_sar(
         sar_file,
         sar_reason,
@@ -720,14 +766,20 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         episode_rows=episode,
         connected_cards=connected_cards,
         connected_devices=device_profiles,
-        connected_fraud_cases=shared.get("fraud_cases", []),
+        connected_fraud_cases=(
+            shared.get("fraud_cases", []) if connected_fraud else []
+        ),
         connected_fraud=connected_fraud,
         coordinated=coordinated,
         customer_asked=bool(evidence_requests),
         customer_denied=customer_denied or explicit_denial,
         evidence_requests=evidence_requests,
     )
-    answer = {
+    graph_case_id = f"AG-{case_id}"
+    writer = getattr(ev, "write_agent_case", None)
+    will_write = callable(writer)
+    base_tool_count = _tool_count(ev)
+    answer: dict[str, Any] = {
         "case_id": case_id,
         "case": {
             "status": status,
@@ -743,8 +795,8 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
             "evidence": evidence_list,
             "similar_prior_cases": similar_ids,
             "summary": summary,
-            "written_to_graph": written,
-            "graph_case_id": graph_case_id if written else "",
+            "written_to_graph": will_write,
+            "graph_case_id": graph_case_id if will_write else "",
         },
         "evidence_requests": evidence_requests,
         "next_best_actions": {
@@ -754,10 +806,59 @@ def investigate(ev: Evidence, cal: Calibrator, case: Mapping[str, Any]) -> dict[
         },
         "sar": sar,
         "stop_reason": stop,
-        "tool_calls": _tool_count(ev),
+        # A successful case_write is itself an auditable MCP tool call.  A failed
+        # attempt is also retained by the adapter ledger, so both paths count it.
+        "tool_calls": base_tool_count + int(will_write),
         "tokens": 0,
         "latency_s": round(time.time() - t0_wall, 4),
     }
+
+    if will_write:
+        prior_case_scores: dict[str, float] = {}
+        for row in similar_cases[:3]:
+            case_ref = str(row.get("case_id", "")).strip()
+            if not case_ref:
+                continue
+            try:
+                other_exposure = abs(float(row.get("exposure_usd", 0.0) or 0.0))
+            except (TypeError, ValueError):
+                continue
+            distance = abs(other_exposure - exposure_seed)
+            prior_case_scores[case_ref] = round(
+                1.0 / (1.0 + distance / max(exposure_seed, 1.0)),
+                6,
+            )
+        try:
+            persisted = writer(
+                {
+                    "case_id": graph_case_id,
+                    "verdict": verdict,
+                    "pattern": output_pattern,
+                    "pattern_description": pattern_why if output_pattern == "undocumented" else "",
+                    "fraud_probability": round(float(p_final), 4),
+                    "exposure_usd": round(float(output_exposure), 2),
+                    "status": status,
+                    "opened_at": _fmt_ts(opened_at),
+                    "stop_reason": stop,
+                    "summary": summary,
+                    "answer_json": json.dumps(answer, sort_keys=True, separators=(",", ":")),
+                },
+                affected[:50],
+                [card_id, *connected_cards],
+                device_profiles,
+                similar_ids[:3],
+                prior_case_scores=prior_case_scores,
+            )
+            if str(persisted) != graph_case_id:
+                raise RuntimeError("graph returned a different AgentCase identifier")
+            state.append("CASE_WRITTEN")
+        except Exception:
+            # A graph write failure is explicit in the exported answer.  The
+            # adapter ledger retains the failed call for audit/debugging.
+            answer["case"]["written_to_graph"] = False
+            answer["case"]["graph_case_id"] = ""
+        answer["tool_calls"] = _tool_count(ev)
+
     state.append("ANSWER_EXPORTED")
     # ``state`` is intentionally not serialized: the sponsor answer format is
     # strict and rejects debug/extra top-level fields.
@@ -780,6 +881,8 @@ def build_evidence(
     device_id: str = "",
     customer_report_denial: bool = False,
     connected_fraud: bool = False,
+    policy_chunks: Iterable[Mapping[str, Any]] | None = None,
+    graph_ring: Mapping[str, Any] | None = None,
     cutoff: datetime | str | None = None,
 ) -> list[dict[str, Any]]:
     """Render traceable claims using the exact rows and query windows supplied."""
@@ -805,6 +908,43 @@ def build_evidence(
             "entity_ids": [tid] if tid else [],
         }
     )
+    if isinstance(graph_ring, Mapping):
+        ring_nodes = [
+            node for node in graph_ring.get("nodes", []) if isinstance(node, Mapping)
+        ]
+        ring_edges = [
+            edge for edge in graph_ring.get("edges", []) if isinstance(edge, Mapping)
+        ]
+        ring_ids = [tid] if tid else []
+        result.append(
+            {
+                "claim": (
+                    f"The bounded graph algorithm returned {len(ring_nodes)} node(s) and "
+                    f"{len(ring_edges)} observed edge(s); its scope is the returned relation set, "
+                    "not an unbounded global community."
+                ),
+                "source": "graph",
+                "ref": f"mcp:graph_ring(txn_id={tid})",
+                "entity_ids": ring_ids,
+            }
+        )
+    for policy in list(policy_chunks or [])[:3]:
+        chunk_id = str(_field(policy, "chunk_id", default="")).strip()
+        title = str(_field(policy, "title", default="retrieved policy")).strip()
+        provenance = policy.get("provenance", {}) if isinstance(policy, Mapping) else {}
+        rule = str(_field(provenance, "policy_rule", default="")).strip()
+        suffix = f" Rules: {rule}." if rule else ""
+        result.append(
+            {
+                "claim": (
+                    f"Retrieved sponsor policy chunk '{title}' was ranked for this case; "
+                    f"the deterministic R1-R10 policy engine, not retrieval score, controls actions.{suffix}"
+                ),
+                "source": "graph",
+                "ref": f"mcp:policy_retrieval(chunk_id={chunk_id})",
+                "entity_ids": [],
+            }
+        )
     if rows:
         start = windows.get("card", {}).get("start", "the retrieved card window")
         end = windows.get("card", {}).get("end", "the investigation cutoff")
@@ -1030,19 +1170,71 @@ def main() -> int:
     ev = Evidence()
     cal = Calibrator()
     selected = select_cases(load_case_pack(), only)
+    if not selected:
+        raise SystemExit("no benchmark cases selected")
     CASES_DIR.mkdir(exist_ok=True)
-    for case in selected:
-        answer = investigate(ev, cal, case)
-        out = CASES_DIR / f"{case['case_id']}.json"
-        out.write_text(json.dumps(answer, indent=2, default=str), encoding="utf-8")
-        c = answer["case"]
-        print(
-            f"{case['case_id']}: {c['verdict']:10s} p={c['fraud_probability']:.2f} "
-            f"pattern={c['pattern']:28s} exposure=${c['exposure_usd']:>9,.2f} "
-            f"sar={answer['sar']['file']!s:5s} tools={answer['tool_calls']} "
-            f"latency={answer['latency_s']}s",
-            flush=True,
+    staging = Path(tempfile.mkdtemp(prefix=".case-staging-", dir=CASES_DIR))
+    answers: list[tuple[Mapping[str, Any], dict[str, Any]]] = []
+    try:
+        # Investigate and persist to staging first. Current release files are not
+        # touched if a graph call, schema check, or semantic validator fails.
+        for case in selected:
+            answer = investigate(ev, cal, case)
+            answers.append((case, answer))
+            staged = staging / f"{case['case_id']}.json"
+            staged.write_text(
+                json.dumps(answer, indent=2, default=str),
+                encoding="utf-8",
+            )
+            c = answer["case"]
+            print(
+                f"{case['case_id']}: {c['verdict']:10s} p={c['fraud_probability']:.2f} "
+                f"pattern={c['pattern']:28s} exposure=${c['exposure_usd']:>9,.2f} "
+                f"sar={answer['sar']['file']!s:5s} tools={answer['tool_calls']} "
+                f"latency={answer['latency_s']}s",
+                flush=True,
+            )
+
+        expected_tools = {
+            str(answer["case_id"]): int(answer["tool_calls"])
+            for _case, answer in answers
+        }
+        findings = validate_files(
+            selected,
+            staging,
+            ValidationContext.from_repo(HERE, DATA),
+            expected_tool_calls=expected_tools,
         )
+        problems = [
+            f"{case_id}: {problem}"
+            for case_id, items in findings.items()
+            for problem in items
+        ]
+        if problems:
+            raise RuntimeError(
+                "staged case pack failed semantic validation:\n"
+                + "\n".join(f" - {problem}" for problem in problems)
+            )
+        graph_findings = validate_graph_files(selected, staging, ev)
+        graph_problems = [
+            f"{case_id}: {problem}"
+            for case_id, items in graph_findings.items()
+            for problem in items
+        ]
+        if graph_problems:
+            raise RuntimeError(
+                "staged case pack failed graph read-back validation:\n"
+                + "\n".join(f" - {problem}" for problem in graph_problems)
+            )
+        for case, _answer in answers:
+            case_id = str(case["case_id"])
+            os.replace(staging / f"{case_id}.json", CASES_DIR / f"{case_id}.json")
+    finally:
+        close = getattr(ev, "close", None)
+        if callable(close):
+            close()
+        shutil.rmtree(staging, ignore_errors=True)
+    print(f"Committed {len(answers)} semantically validated case answers.")
     return 0
 
 

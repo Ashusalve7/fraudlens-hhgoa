@@ -191,7 +191,7 @@ def test_ring_window_and_transaction_identifier_are_bounded(
     device_id, start, end = evidence.neighborhood_calls[0]
     assert device_id == "DP-test"
     assert start == "2019-12-01 12:00:00"
-    assert end == "2020-02-29 12:00:00"
+    assert end == "2020-01-15 12:00:00"
 
     for txn_id in ("../secret", r"..%5csecret", "txn/secret", "a" * 129, ""):
         response = loopback_client.get(f"/api/graph/ring/{txn_id}")
@@ -365,6 +365,68 @@ def test_explanation_cache_tracks_case_pack_model_and_adapter_fingerprints(
     assert calls == ["HHG-001", "HHG-001", "HHG-001", "HHG-001"]
 
 
+def test_real_explanation_builder_handles_cutoff_temperature_and_calibrator() -> None:
+    class ExplanationEvidence:
+        conn = object()
+
+        def txn_context(self, _txn_id: str) -> dict[str, Any]:
+            txn = {
+                "txn_id": "T-1",
+                "ts": "2020-01-15 10:00:00",
+                "amount": 125.0,
+                "channel": "online",
+                "product_cd": "C",
+                "risk_score": 0.8,
+                "card_id": "C-1-K1",
+                "addr1": "R1",
+            }
+            return {
+                "txn": txn,
+                "card": {"card_id": "C-1-K1"},
+                "customer_id": "C-1",
+                "device": {"device_id": "DP-1", "device_info": "browser"},
+            }
+
+        def card_window(self, _card_id: str, _start: str, _end: str) -> list[dict[str, Any]]:
+            return [self.txn_context("T-1")["txn"]]
+
+        def device_neighborhood(self, _device_id: str, _start: str, _end: str) -> dict[str, Any]:
+            return {
+                "txns": [self.txn_context("T-1")["txn"]],
+                "cards": [{"card_id": "C-1-K1"}],
+                "customers": [{"customer_id": "C-1"}],
+                "prior_cases": [],
+            }
+
+    previous = dashboard._ev
+    dashboard._ev = ExplanationEvidence()
+    try:
+        result = dashboard._build_explanation(
+            "HHG-001",
+            {
+                "case": {
+                    "fraud_probability": 0.81,
+                    "pattern": "card_not_present_fraud",
+                    "evidence": [],
+                    "similar_prior_cases": [],
+                }
+            },
+            {
+                "case_id": "HHG-001",
+                "opened_at": "2020-01-15 12:00:00",
+                "flagged_txn_id": "T-1",
+                "card_id": "C-1-K1",
+                "customer_id": "C-1",
+            },
+        )
+    finally:
+        dashboard._ev = previous
+    assert result["base_model_probability"] is not None
+    assert 0 <= result["base_model_probability"] <= 1
+    assert "pre-response" in result["probability_basis"]
+    assert result["model"]["temperature"] == 1.5
+
+
 def test_token_is_optional_for_loopback_and_required_for_remote_api(
     loopback_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -425,6 +487,11 @@ def test_dist_spa_assets_and_history_fallback(loopback_client: TestClient) -> No
     assert asset.status_code == 200
     assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
     assert loopback_client.get("/assets/%2e%2e%2findex.html").status_code == 404
+
+    robots = loopback_client.get("/robots.txt")
+    assert robots.status_code == 200
+    assert robots.text == "User-agent: *\nAllow: /\n"
+    assert "text/plain" in robots.headers["content-type"]
 
 
 def test_missing_or_escaping_dist_index_is_not_served(

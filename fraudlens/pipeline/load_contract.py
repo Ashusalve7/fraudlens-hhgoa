@@ -9,10 +9,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import pandas as pd
 
@@ -133,7 +134,7 @@ MANAGED_COMPONENTS = {
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -193,6 +194,10 @@ def _dataframe_signature(path: Path, spec: LoadSpec) -> dict[str, Any]:
     duplicate_rows = int(keys.duplicated(list(spec.id_columns), keep=False).sum())
     result["null_or_empty_ids"] = null_or_empty
     result["null_or_empty_id_total"] = int(sum(null_or_empty.values()))
+    result["id_dtypes"] = {column: str(keys[column].dtype) for column in spec.id_columns}
+    result["non_string_id_columns"] = [
+        column for column in spec.id_columns if not pd.api.types.is_string_dtype(keys[column].dtype)
+    ]
     result["duplicate_key_rows"] = duplicate_rows
     result["unique_key_count"] = int(len(keys.drop_duplicates(list(spec.id_columns))))
     return result
@@ -207,7 +212,9 @@ def validate_next_txn(load_dir: Path = LOAD) -> dict[str, Any]:
     """Validate that NEXT_TXN is a same-card, chronological, acyclic chain."""
     edge_path = load_dir / "e_NEXT_TXN.parquet"
     txn_path = load_dir / "v_Transaction.parquet"
-    card_map_path = OUT / "txn_card_map.parquet"
+    card_map_path = load_dir.parent / "txn_card_map.parquet"
+    if not card_map_path.exists():
+        card_map_path = OUT / "txn_card_map.parquet"
     result: dict[str, Any] = {"valid": False, "checks": {}, "metrics": {}}
     if not edge_path.exists() or not txn_path.exists() or not card_map_path.exists():
         result["error"] = "NEXT_TXN, Transaction, or txn_card_map input is missing"
@@ -226,15 +233,25 @@ def validate_next_txn(load_dir: Path = LOAD) -> dict[str, Any]:
     endpoints = set(txn["txn_id"])
     same_card = edge[["txn_id", "next_id"]].merge(
         card_map.rename(columns={"txn_id": "from_id", "card_id": "from_card"}),
-        on="from_id", how="left",
+        left_on="txn_id",
+        right_on="from_id",
+        how="left",
     ).merge(
         card_map.rename(columns={"txn_id": "to_id", "card_id": "to_card"}),
-        on="to_id", how="left",
+        left_on="next_id",
+        right_on="to_id",
+        how="left",
     )
     times = edge[["txn_id", "next_id"]].merge(
-        txn.rename(columns={"txn_id": "from_id", "ts": "from_ts"}), on="from_id", how="left"
+        txn.rename(columns={"txn_id": "from_id", "ts": "from_ts"}),
+        left_on="txn_id",
+        right_on="from_id",
+        how="left",
     ).merge(
-        txn.rename(columns={"txn_id": "to_id", "ts": "to_ts"}), on="to_id", how="left"
+        txn.rename(columns={"txn_id": "to_id", "ts": "to_ts"}),
+        left_on="next_id",
+        right_on="to_id",
+        how="left",
     )
     expected_gap = (times["to_ts"] - times["from_ts"]).dt.total_seconds()
     valid_expected_gap = expected_gap.notna() & (expected_gap >= 0) & ((expected_gap - gap).abs() < 1e-6)
@@ -312,6 +329,10 @@ def inspect_sources(
             errors.append(f"{name}: null/empty IDs ({entry['null_or_empty_id_total']})")
         if entry.get("duplicate_key_rows", 0):
             errors.append(f"{name}: duplicate key rows ({entry['duplicate_key_rows']})")
+        if entry.get("non_string_id_columns"):
+            errors.append(
+                f"{name}: graph IDs must use string dtype ({entry['non_string_id_columns']})"
+            )
 
     next_validation: dict[str, Any] | None = None
     if deep and all((load_dir / name).exists() for name in ("e_NEXT_TXN.parquet", "v_Transaction.parquet")):

@@ -1,121 +1,147 @@
 # FraudLens — Agentic Fraud Investigation on TigerGraph
 
-**HHGOA × TigerGraph sponsor challenge.** FraudLens investigates a fraud alert the way a
-junior fraud analyst would: it gathers connected evidence from a TigerGraph graph, scores
-known fraud patterns, calibrates a fraud probability against 5,565 labeled historical cases,
-asks for more evidence when the policy requires it, recommends the next best action under the
-bank's fraud policy (R1–R10), writes the finished case back into the graph as memory for the
-next investigation, and exports the three required deliverables per case (case record, SAR
-when the policy calls for one, next best actions with approval routes).
+**HHGOA × TigerGraph sponsor challenge.** FraudLens investigates a suspicious transaction as a bounded, connected case rather than treating a risk score as a verdict. It gathers graph evidence through an allow-listed MCP boundary, retrieves policy and closed-case context, ranks fraud likelihood with a calibrated model, applies deterministic bank policy R1–R10, records simulated evidence requests as simulations, and persists a complete `AgentCase` answer with its evidence edges.
 
-## Results
+The current case files are release artifacts only after the commands in the [release checklist](../docs/RELEASE_CHECKLIST.md) pass. Do not submit an older `cases/` directory or an old model report.
 
-- **20/20 answer files valid** (schema, ID-existence, policy-routing, SAR-gate, agreement checks).
-- **20/20 investigation cases written into TigerGraph** (`AgentCase` vertices + evidence edges).
-- **Fraud-probability calibrator**: holdout AUC **0.975** on 1,392 time-held-out labeled cases,
-  calibrated (Platt) on the labeled closed-case history and shifted to the exam prior.
-- **Pattern detector**: **77.4%** agreement with the bank's own labels across 4,665 confirmed-fraud
-  cases (thresholds locked on the labeled history, never on the exam cases).
-- **Verdict balance**: 11 fraud / 9 legitimate across the 20 exam cases — consistent with the
-  task's warning that *half the cases are legitimate* and that an agent that blocks everything
-  scores badly.
+## What is implemented
 
-## One-command run
+- **Cutoff-correct investigations:** every card, customer, device, region, and policy retrieval ends at the case's `opened_at` timestamp. Client-side filtering protects against a graph response that accidentally includes future rows.
+- **MCP-mediated graph access:** the official Python MCP SDK runs over stdio. The service publishes 11 named, schema-validated tools and no arbitrary-GSQL, shell, or filesystem tool.
+- **Graph-native evidence:** 14 installed GSQL v3 queries cover transaction context, bounded windows, device neighborhoods, rings, shared neighbors, case memory, policy chunks, and AgentCase read/write.
+- **Deterministic decision policy:** the model supplies `fraud_probability`; `agent/decision.py` controls actions, approval routes, evidence sufficiency, stop reasons, and SAR gates.
+- **Honest memory:** retrieved `ClosedCase` outcomes contribute an independent-evidence item when confirmed fraud is present. New `AgentCase` writes are retrievable with their complete answers and exact `AG_*` edges; retrieval is validated through MCP.
+- **Grounded GraphRAG:** `PolicyChunk` text is retrieved from TigerGraph, hash-verified against the local provenance artifact, and cited in evidence. Retrieval never authorizes an action.
+- **Safe graph algorithms:** bounded connected components, shortest paths, shared neighbors, and degree centrality run over observed relation sets with explicit scope/truncation metadata. The verified optional TigerGraph GDS degree-centrality artifact is documented in [`docs/GDS.md`](../docs/GDS.md) and [`docs/LIVE_GRAPH_REPORT.md`](../docs/LIVE_GRAPH_REPORT.md).
+- **Atomic, semantic outputs:** staged case files are schema- and graph-readback-validated before they replace the release files.
 
-```bash
-# 1. Python env (3.12)
-uv venv .venv && uv pip install -p .venv/Scripts/python.exe pandas pyarrow pyTigerGraph python-dotenv scikit-learn requests
+## Reproduce from the repository root
 
-# 2. Configure (already contains live defaults for this workspace; override via env)
-cp .env.example .env
+### 1. Install locked dependencies
 
-# 3. Build the graph (schema + load + queries) — idempotent, resumable
-.venv/Scripts/python.exe pipeline/create_schema.py
-.venv/Scripts/python.exe pipeline/build_load_files.py
-.venv/Scripts/python.exe pipeline/load_graph.py
-.venv/Scripts/python.exe pipeline/install_queries.py
-
-# 4. Investigate all 20 benchmark cases -> cases/*.json
-.venv/Scripts/python.exe runner.py
-
-# 5. Validate the submission
-.venv/Scripts/python.exe validator.py
+```powershell
+uv sync --project fraudlens --all-groups --frozen
+npm ci --prefix fraudlens/dashboard
 ```
+
+### 2. Configure credentials outside source control
+
+```powershell
+Copy-Item fraudlens/.env.example fraudlens/.env
+```
+
+Set `TG_HOST`, `TG_SECRET`, and `TG_GRAPHNAME` in the ignored file or process environment. The code fails closed when credentials are missing. See [`docs/SECURITY_ROTATION.md`](../docs/SECURITY_ROTATION.md) for the required cloud-console rotation of any previously exposed credential.
+
+### 3. Validate and build graph artifacts
+
+```powershell
+uv run --project fraudlens python scripts/secret_scan.py
+uv run --project fraudlens python scripts/check_dataset.py
+uv run --project fraudlens python fraudlens/pipeline/derive_card_ids_final.py
+uv run --project fraudlens python fraudlens/pipeline/build_load_files.py
+uv run --project fraudlens python fraudlens/pipeline/load_graph.py --no-remote
+```
+
+The builder fails before writing an incomplete load plan. It excludes wholly unknown device profiles, creates `CASE_DEVICE` and `PolicyChunk` frames, and writes string graph IDs.
+
+### 4. Apply the live schema and queries
+
+Review the graph name and credential scope first. Then run:
+
+```powershell
+uv run --project fraudlens python fraudlens/pipeline/create_schema.py --skip-jobs
+uv run --project fraudlens python fraudlens/pipeline/install_queries.py
+```
+
+`--skip-jobs` avoids silently changing optional vector attributes. The load contract and graph-health report still verify the required static graph. Use the operations guide before any live upsert.
+
+### 5. Retrain and evaluate the exact production feature path
+
+```powershell
+uv run --project fraudlens python fraudlens/eval/build_features.py
+uv run --project fraudlens python fraudlens/eval/train.py
+```
+
+Read final metrics from `fraudlens/eval/out/model.json` and `eval_report.txt`. Pattern-label agreement is explicitly a diagnostic against noisy historical labels; it is not the binary fraud model's accuracy and is never used as a policy threshold.
+
+### 6. Generate and validate all 20 cases
+
+```powershell
+uv run --project fraudlens python fraudlens/runner.py
+uv run --project fraudlens python fraudlens/validator.py
+uv run --project fraudlens python fraudlens/validator.py --check-graph
+```
+
+The runner stages every answer, validates the local schema/semantics, reads every new `AgentCase` back through MCP, and commits the case files only after those checks pass. A failed graph write is represented as `written_to_graph: false`; it is never represented as persisted.
+
+### 7. Build and serve the analyst workspace
+
+```powershell
+npm run build --prefix fraudlens/dashboard
+uv run --project fraudlens uvicorn dashboard.app:app --app-dir fraudlens --host 127.0.0.1 --port 8000
+```
+
+Open `/`, `/cases/HHG-014`, and `/analytics`. The dashboard is read-only decision support. It displays bounded graph traversal, evidence/uncertainty separation, approval routes, recorded simulations, similar-case provenance, and a labeled SAR draft.
 
 ## Architecture
 
+```text
+case_pack.csv
+      │
+      ▼
+MCP stdio client ── 11 allow-listed tools ──► TigerGraph MCP server
+      │                                           │
+      │                                           ├─ 14 installed GSQL v3 queries
+      │                                           ├─ PolicyChunk + ClosedCase provenance
+      │                                           └─ AgentCase read/write with exact edges
+      ▼
+cutoff-aware evidence + episode builder
+      │
+      ├─ calibrated fraud likelihood (model ranks; never authorizes)
+      ├─ evidence-backed pattern registry
+      ├─ deterministic R1–R10 policy and approval routes
+      ├─ closed-case memory / evidence requests / SAR facts
+      ▼
+strict answer JSON + graph read-back validation + dashboard
 ```
-CLI runner (state machine per case)
-  TRIGGERED → CONTEXT_RETRIEVED → EVIDENCE_GATHERED → PATTERNS_ASSESSED → MEMORY_RETRIEVED
-    → NBA_INITIAL → EVIDENCE_REQUESTED → EVIDENCE_RECEIVED → NBA_FINAL → CASE_WRITTEN → ANSWER_EXPORTED
-        │                                   │
-        │ TigerGraph installed queries       │ deterministic decision core
-        │ (evidence, typed JSON)             │ (calibrator + pattern rules + policy R1–R10)
-        ▼
-TigerGraph Savanna — FraudGraph
-  9 vertex types · 15 edge types (with reverse edges) · vector attributes (cosine, 384-d)
-  590,742 transactions · 14,318 cards · 13,553 customers · 9,706 device profiles · 5,565 closed cases
+
+The graph contract has 9 vertex types and 15 directed edge types. Static source expectations are derived from the validated load frames; live observed counts are recorded in `fraudlens/pipeline/out/graph_health.json` and must match before release.
+
+## Card identity derivation
+
+`transactions.csv` has no `card_id`. FraudLens derives the deterministic identity:
+
+```text
+(card1, card4, card6) → sorted rank K within customer_id
+card_id = customer_id + "-K" + K
 ```
 
-The LLM is deliberately **not** in the decision path. Every fact in an answer file is produced
-by a GSQL query or a deterministic rule; every action cites a policy rule number; the calibrator
-is trained only on the labeled July–October history and never sees exam outcomes.
-
-## The card_id rule (reverse-engineered, validated 100%)
-
-`transactions.csv` has no `card_id`, but every case references cards like `C12382-K1`. We
-derived and validated (4,665/4,665 flagged txns + 14,955/14,955 case-listed transactions,
-including the 900 cleared cases) the rule:
-
-> card identity = `(card1, card4, card6)`; **K** = the 1-based rank of that identity among the
-> customer's cards sorted ascending; `card_id = customer_id + "-K" + K`.
-
-## Agent ↔ TigerGraph
-
-The agent speaks to the graph exclusively through **10 installed GSQL queries** (SYNTAX v3,
-GQL path patterns) — the same surface the TigerGraph MCP server exposes as tools:
-
-`get_transaction_context` · `get_card_window` · `get_customer_history` ·
-`get_device_neighborhood` · `get_region_activity` · `get_shared_entity_network` ·
-`get_email_crosslinks` · `find_similar_cases` · `upsert_agent_case` · `get_agent_case`
-
-MCP configuration for interactive use is in the user-level ZCode config (`tigergraph` server:
-`uvx tigergraph-mcp` with `TG_HOST`/`TG_SECRET`).
-
-## Decision core
-
-| Component | What it does | Trained/validated on |
-|---|---|---|
-| `agent/decision.py::Calibrator` | 16-feature logistic model → Platt calibration → exam-prior shift (0.5) + temperature 1.5 | 4,173 labeled cases; holdout AUC 0.975 |
-| `agent/decision.py::detect_pattern` | precedence rules over burst/device/region signals | 77.4% on 4,665 confirmed-fraud cases |
-| `agent/decision.py::next_best_actions` | R1–R10 + approval routing (auto/L1/L2), ordered actions with rule citations | policy §2–§3 tables, unit-checked by validator |
-| `agent/decision.py::should_file_sar` | FILE_REPORT gate: exposure > $1,000 ∨ shared link ∨ undocumented | 397 filed SARs in history: exposure>$1,000 → filed 100% |
-
-## Evidence-request simulation (policy §5)
-
-Customer/analyst responses are not provided by the task. FraudLens simulates them and records
-the assumption verbatim in `evidence_requests[].assumed_response`. Two principles:
-
-1. **Customer-report triggers**: the report itself is the denial; for disputed charges matching
-   the cardholder's own recurring pattern (same amount + product, ≥3 occurrences over ≥30 days)
-   the agent takes policy **R7** (disputed-but-legitimate): verify, warn, close legitimate.
-2. **Risk-score triggers**: the assumed response follows the branch supported by the calibrated
-   probability and the nearest similar closed cases from the graph's case memory.
+The derivation validates every flagged transaction and every transaction listed in the 5,565 historical cases. Missing components are represented as `_NA_`; unknown source IDs are never silently dropped.
 
 ## Repository layout
 
-```
-pipeline/   schema, card-id derivation, load-frame builder, loader, query installer
-gsql/       schema.gsql + 10 evidence queries (SYNTAX v3)
-agent/      evidence layer, inference features, decision core
-eval/       labeled feature builder + training/eval (AUC, pattern accuracy, SAR gate)
-cases/      the 20 submission files
-validator.py   submission format + policy agreement checks
-docs/       demo script, technical blog, data dictionary
+```text
+fraudlens/
+  agent/       cutoff/evidence/feature/decision/SAR logic
+  eval/        inference-identical feature build and calibration
+  graph_tools/ bounded graph algorithms and backends
+  gsql/        schema and installed evidence queries
+  mcp/         official SDK server, client, service, and adapter
+  pipeline/    card map, load frames, loader, schema/query utilities
+  dashboard/   FastAPI API and React analyst workspace
+  cases/       generated benchmark answer artifacts
+  validator.py strict schema, semantic, and graph-readback checks
+docs/          operations, security, release, demo, video, and GDS notes
+scripts/       dataset, secret, manifest, and safe packaging checks
 ```
 
-## Notes
+## Security and release truthfulness
 
-- Missing strings are stored as `"_NA_"` in the graph (pyTigerGraph upsert constraint).
-- `SentinelGraph` (empty seed graph) was left untouched; all work lives in `FraudGraph`.
-- Secrets live in `.env` / the ZCode user config — never committed.
+- Never print or commit `TG_SECRET`, cloud credentials, `.env`, raw sponsor data, or local dependencies.
+- Run `scripts/secret_scan.py` before packaging and after every documentation change.
+- Do not publish old AUC, pattern-agreement, verdict-balance, graph-health, or SAR numbers. Copy final values from regenerated artifacts.
+- Keep the manual cloud credential rotation open until it is completed in the TigerGraph console.
+
+## License and notices
+
+MIT License: [`LICENSE`](../LICENSE). Dependency and data attribution: [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).

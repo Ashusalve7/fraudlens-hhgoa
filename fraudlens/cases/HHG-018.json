@@ -1,99 +1,113 @@
 {
   "case_id": "HHG-018",
   "case": {
-    "status": "closed_legitimate",
-    "verdict": "legitimate",
-    "fraud_probability": 0.1,
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.999,
     "pattern": "none",
     "pattern_description": "",
-    "affected_txn_ids": [],
-    "first_suspicious_txn_id": "",
+    "affected_txn_ids": [
+      "3491361"
+    ],
+    "first_suspicious_txn_id": "3491361",
     "connected_card_ids": [],
     "connected_device_profiles": [],
-    "exposure_usd": 0.0,
+    "exposure_usd": 39.08,
     "evidence": [
       {
-        "claim": "Disputed amount matches the cardholder's recurring pattern (same amount and product, recurring for over a month)",
+        "claim": "Flagged transaction 3491361: $39.08 in_person (W) with model risk score 0.48; the score is an investigation input, not a verdict.",
         "source": "graph",
-        "ref": "query:get_customer_history",
+        "ref": "query:get_transaction_context(txn_id=3491361)",
         "entity_ids": [
-          "C02354-K2"
+          "3491361"
         ]
       },
       {
-        "claim": "Customer recognized the charge as their own recurring payment after verification",
-        "source": "customer",
-        "ref": "evidence_request:1",
+        "claim": "The bounded graph algorithm returned 805 node(s) and 804 observed edge(s); its scope is the returned relation set, not an unbounded global community.",
+        "source": "graph",
+        "ref": "mcp:graph_ring(txn_id=3491361)",
+        "entity_ids": [
+          "3491361"
+        ]
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '1. Actions' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-03fa4768ea71e63a5e93d19e)",
         "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '3. Rules' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions. Rules: R1|R10|R2|R3|R4|R5|R6|R7|R8|R9.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-52b8f607470089c2ed45765b)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk 'Pattern 3: Card-not-present fraud from a new device.' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-338faa423d37c6394ea3039a)",
+        "entity_ids": []
+      },
+      {
+        "claim": "The bounded episode selected 1 transaction(s), totaling $39.08, from the card-window query run from 2016-09-28 13:41:26 through 2016-11-27 14:41:26.",
+        "source": "graph",
+        "ref": "query:get_card_window(start=2016-09-28 13:41:26, end=2016-11-27 14:41:26)",
+        "entity_ids": [
+          "3491361"
+        ]
+      },
+      {
+        "claim": "The case trigger explicitly reports that the customer did not authorize the flagged transaction; no later interview is asserted.",
+        "source": "customer",
+        "ref": "trigger:customer_report",
+        "entity_ids": [
+          "3491361"
+        ]
       }
     ],
     "similar_prior_cases": [],
-    "summary": "Alert HHG-018: customer reported an unrecognized $39.08 in_person purchase. The charge matches the cardholder's recurring pattern (same amount and product on the card's history for over a month). After verification the customer recognized the payment. Closed as legitimate under R7.",
+    "summary": "Alert HHG-018: the customer reported an unauthorized purchase on transaction 3491361 ($39.08, in_person). Investigation supports none with 1 transaction(s) in the bounded episode and $39.08 exposure. The case trigger itself explicitly reports the customer did not authorize the transaction.",
     "written_to_graph": true,
     "graph_case_id": "AG-HHG-018"
   },
-  "evidence_requests": [
-    {
-      "type": "customer_validation",
-      "asked_after_step": 83,
-      "assumed_response": "Customer recognizes the charge as their own recurring payment of $39.08 (same amount and product appear 65 times in the card's history)."
-    }
-  ],
+  "evidence_requests": [],
   "next_best_actions": {
     "initial": [
       {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied the transaction"
+      },
+      {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "R7: disputed charge matching the cardholder's recurring pattern"
-      },
-      {
-        "action": "VERIFY_WITH_CUSTOMER",
-        "route": "auto",
-        "reason": "R7: confirm the recurring charge with the customer"
-      },
-      {
-        "action": "WARN_CUSTOMER",
-        "route": "auto",
-        "reason": "R7: informational reminder about the recurring payment"
+        "reason": "R2: open an internal case with the evidence attached"
       }
     ],
     "final": [
       {
-        "action": "CLOSE_NO_FRAUD",
-        "route": "auto",
-        "reason": "R3/R7: customer confirmed the recurring charge"
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied the transaction"
       },
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "R7: internal record of the dispute resolution"
+        "reason": "R2: open an internal case with the evidence attached"
       }
     ],
-    "what_changed": "Verification with the customer settled the dispute: the charge was their own recurring payment (R7)."
+    "what_changed": "nothing"
   },
   "sar": {
     "file": false,
-    "reason": "3a: disputed-but-legitimate recurring charge (R7); no fraud confirmed",
+    "reason": "3a: case only; exposure is not above $1,000 and no connected fraud or coordinated abuse is corroborated",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Verification settled the question (policy 6).",
-  "tool_calls": 84,
+  "stop_reason": "Probability 1.00 is beyond the policy threshold with 2 independent evidence items (policy 6).",
+  "tool_calls": 8,
   "tokens": 0,
-  "latency_s": 12.88,
-  "_states": [
-    "TRIGGERED",
-    "CONTEXT_RETRIEVED",
-    "EVIDENCE_GATHERED",
-    "PATTERNS_ASSESSED",
-    "MEMORY_RETRIEVED",
-    "NBA_INITIAL",
-    "EVIDENCE_REQUESTED",
-    "EVIDENCE_RECEIVED",
-    "NBA_FINAL",
-    "CASE_WRITTEN",
-    "ANSWER_EXPORTED"
-  ]
+  "latency_s": 7.5448
 }

@@ -1,0 +1,991 @@
+{
+  "builder": {
+    "case_device_rule": "direct ClosedCase.txn_ids -> observed DeviceProfile only",
+    "next_txn_rule": "stable per-card ts/TransactionID chain; STRING IDs; integer non-negative gap",
+    "policy_source": "HHGOA_IEEE/README.md",
+    "unknown_device_rule": "exclude profiles with no DeviceInfo/OS/browser/screen evidence",
+    "version": "fraudlens-builder/v2"
+  },
+  "contract_version": "fraudlens.load-plan/v2",
+  "expected_edge_counts": {
+    "BILLED_IN": 525003,
+    "CASE_CARD": 5565,
+    "CASE_CONN_CARD": 92,
+    "CASE_DEVICE": 5137,
+    "CASE_TXN": 14955,
+    "FROM_DEVICE": 140784,
+    "NEXT_TXN": 576424,
+    "OWNS_CARD": 14318,
+    "PAID_WITH": 590742,
+    "P_EMAIL": 496262,
+    "R_EMAIL": 137453
+  },
+  "expected_vertex_counts": {
+    "BillingRegion": 332,
+    "Card": 14318,
+    "ClosedCase": 5565,
+    "Customer": 13553,
+    "DeviceProfile": 9705,
+    "EmailDomain": 60,
+    "PolicyChunk": 17,
+    "Transaction": 590742
+  },
+  "generated_at": "2026-09-24T22:23:03.104762Z",
+  "managed_components": {
+    "AgentCase": {
+      "bulk_loaded": false,
+      "compatibility": "existing AgentCase attributes and AG_* edges",
+      "count_invariant": "observed_only",
+      "owner": "agent/evidence.py or MCP case_write"
+    },
+    "PolicyChunk.embedding": {
+      "bulk_loaded": false,
+      "compatibility": "local 384-d artifact remains authoritative when TigerVector is unavailable",
+      "count_invariant": "optional_vector_index",
+      "owner": "pipeline/index_policy.py"
+    }
+  },
+  "plan": [
+    {
+      "attributes": [],
+      "from_type": null,
+      "graph_type": "Customer",
+      "id_columns": [
+        "customer_id"
+      ],
+      "kind": "v",
+      "name": "v_Customer",
+      "to_type": null
+    },
+    {
+      "attributes": [],
+      "from_type": null,
+      "graph_type": "Card",
+      "id_columns": [
+        "card_id"
+      ],
+      "kind": "v",
+      "name": "v_Card",
+      "to_type": null
+    },
+    {
+      "attributes": [],
+      "from_type": null,
+      "graph_type": "EmailDomain",
+      "id_columns": [
+        "domain"
+      ],
+      "kind": "v",
+      "name": "v_EmailDomain",
+      "to_type": null
+    },
+    {
+      "attributes": [],
+      "from_type": null,
+      "graph_type": "BillingRegion",
+      "id_columns": [
+        "region_id"
+      ],
+      "kind": "v",
+      "name": "v_BillingRegion",
+      "to_type": null
+    },
+    {
+      "attributes": [],
+      "from_type": null,
+      "graph_type": "DeviceProfile",
+      "id_columns": [
+        "device_id"
+      ],
+      "kind": "v",
+      "name": "v_DeviceProfile",
+      "to_type": null
+    },
+    {
+      "attributes": [],
+      "from_type": null,
+      "graph_type": "ClosedCase",
+      "id_columns": [
+        "case_id"
+      ],
+      "kind": "v",
+      "name": "v_ClosedCase",
+      "to_type": null
+    },
+    {
+      "attributes": [],
+      "from_type": null,
+      "graph_type": "Transaction",
+      "id_columns": [
+        "txn_id"
+      ],
+      "kind": "v",
+      "name": "v_Transaction",
+      "to_type": null
+    },
+    {
+      "attributes": [],
+      "from_type": null,
+      "graph_type": "PolicyChunk",
+      "id_columns": [
+        "chunk_id"
+      ],
+      "kind": "v",
+      "name": "v_PolicyChunk",
+      "to_type": null
+    },
+    {
+      "attributes": [
+        "first_seen"
+      ],
+      "from_type": "Customer",
+      "graph_type": "OWNS_CARD",
+      "id_columns": [
+        "customer_id",
+        "card_id"
+      ],
+      "kind": "e",
+      "name": "e_OWNS_CARD",
+      "to_type": "Card"
+    },
+    {
+      "attributes": [],
+      "from_type": "Transaction",
+      "graph_type": "PAID_WITH",
+      "id_columns": [
+        "from",
+        "card_id"
+      ],
+      "kind": "e",
+      "name": "e_PAID_WITH",
+      "to_type": "Card"
+    },
+    {
+      "attributes": [],
+      "from_type": "Transaction",
+      "graph_type": "FROM_DEVICE",
+      "id_columns": [
+        "from",
+        "device_id"
+      ],
+      "kind": "e",
+      "name": "e_FROM_DEVICE",
+      "to_type": "DeviceProfile"
+    },
+    {
+      "attributes": [],
+      "from_type": "Transaction",
+      "graph_type": "P_EMAIL",
+      "id_columns": [
+        "from",
+        "domain"
+      ],
+      "kind": "e",
+      "name": "e_P_EMAIL",
+      "to_type": "EmailDomain"
+    },
+    {
+      "attributes": [],
+      "from_type": "Transaction",
+      "graph_type": "R_EMAIL",
+      "id_columns": [
+        "from",
+        "domain"
+      ],
+      "kind": "e",
+      "name": "e_R_EMAIL",
+      "to_type": "EmailDomain"
+    },
+    {
+      "attributes": [],
+      "from_type": "Transaction",
+      "graph_type": "BILLED_IN",
+      "id_columns": [
+        "from",
+        "region_id"
+      ],
+      "kind": "e",
+      "name": "e_BILLED_IN",
+      "to_type": "BillingRegion"
+    },
+    {
+      "attributes": [
+        "gap_seconds"
+      ],
+      "from_type": "Transaction",
+      "graph_type": "NEXT_TXN",
+      "id_columns": [
+        "txn_id",
+        "next_id"
+      ],
+      "kind": "e",
+      "name": "e_NEXT_TXN",
+      "to_type": "Transaction"
+    },
+    {
+      "attributes": [],
+      "from_type": "ClosedCase",
+      "graph_type": "CASE_TXN",
+      "id_columns": [
+        "case_id",
+        "txn_id"
+      ],
+      "kind": "e",
+      "name": "e_CASE_TXN",
+      "to_type": "Transaction"
+    },
+    {
+      "attributes": [],
+      "from_type": "ClosedCase",
+      "graph_type": "CASE_CARD",
+      "id_columns": [
+        "case_id",
+        "card_id"
+      ],
+      "kind": "e",
+      "name": "e_CASE_CARD",
+      "to_type": "Card"
+    },
+    {
+      "attributes": [],
+      "from_type": "ClosedCase",
+      "graph_type": "CASE_CONN_CARD",
+      "id_columns": [
+        "case_id",
+        "card_id"
+      ],
+      "kind": "e",
+      "name": "e_CASE_CONN_CARD",
+      "to_type": "Card"
+    },
+    {
+      "attributes": [],
+      "from_type": "ClosedCase",
+      "graph_type": "CASE_DEVICE",
+      "id_columns": [
+        "case_id",
+        "device_id"
+      ],
+      "kind": "e",
+      "name": "e_CASE_DEVICE",
+      "to_type": "DeviceProfile"
+    }
+  ],
+  "source_inputs": [
+    {
+      "path": "C:\\Users\\ashus\\OneDrive\\Desktop\\HH GOA\\Task 4\\HHGOA_IEEE\\transactions.csv",
+      "sha256": "dd084e58d7c33e7fd5a59c7b992ba9d6f62b0bd443fb19d4a5d5212e0246bb2b",
+      "size_bytes": 707936515
+    },
+    {
+      "path": "C:\\Users\\ashus\\OneDrive\\Desktop\\HH GOA\\Task 4\\HHGOA_IEEE\\identity.csv",
+      "sha256": "9ebd6740ecb7e2afd392b5082a6f349907e871144659f622f5302ecd4ca39fad",
+      "size_bytes": 26716154
+    },
+    {
+      "path": "C:\\Users\\ashus\\OneDrive\\Desktop\\HH GOA\\Task 4\\HHGOA_IEEE\\closed_cases_history.csv",
+      "sha256": "840613948d023fc3ddbfcb3291d5be250ee328e6eba1d2810b010fca5a757854",
+      "size_bytes": 2706417
+    },
+    {
+      "path": "C:\\Users\\ashus\\OneDrive\\Desktop\\HH GOA\\Task 4\\fraudlens\\pipeline\\out\\txn_card_map.parquet",
+      "sha256": "93815b50167010f114801161bde5e881251fcf485b373b6b2a52ef69e973c2f7",
+      "size_bytes": 6534901
+    },
+    {
+      "path": "C:\\Users\\ashus\\OneDrive\\Desktop\\HH GOA\\Task 4\\fraudlens\\pipeline\\out\\card_map.parquet",
+      "sha256": "175a25c378445c72aa15f51feffed76e56cf4e512a048a5fbc3fe5d7a5de6da7",
+      "size_bytes": 425352
+    },
+    {
+      "path": "C:\\Users\\ashus\\OneDrive\\Desktop\\HH GOA\\Task 4\\fraudlens\\pipeline\\out\\card_rule_report.json",
+      "sha256": "066f2acf7ac7666ffa9a8ae66ebd84de7916c8180021200513da2150ab0ef678",
+      "size_bytes": 598
+    }
+  ],
+  "source_inspection": {
+    "contract_version": "fraudlens.load-plan/v2",
+    "entries": {
+      "e_BILLED_IN": {
+        "columns": [
+          "from",
+          "region_id"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_BILLED_IN.parquet",
+        "from_type": "Transaction",
+        "graph_type": "BILLED_IN",
+        "id_dtypes": {
+          "from": "str",
+          "region_id": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "from": 0,
+          "region_id": 0
+        },
+        "rows": 525003,
+        "sha256": "bb9ce20d9910e4d50e77471884481a8c4b31bc24ece39eabb7f483ab15668cda",
+        "size_bytes": 3208714,
+        "to_type": "BillingRegion",
+        "unique_key_count": 525003
+      },
+      "e_CASE_CARD": {
+        "columns": [
+          "case_id",
+          "card_id"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_CASE_CARD.parquet",
+        "from_type": "ClosedCase",
+        "graph_type": "CASE_CARD",
+        "id_dtypes": {
+          "card_id": "str",
+          "case_id": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "card_id": 0,
+          "case_id": 0
+        },
+        "rows": 5565,
+        "sha256": "be3bf04e366d4508e4eeb80d6aca5cb46c4b05d6c4eba8f1931442fff9fa2f4f",
+        "size_bytes": 56174,
+        "to_type": "Card",
+        "unique_key_count": 5565
+      },
+      "e_CASE_CONN_CARD": {
+        "columns": [
+          "case_id",
+          "card_id"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_CASE_CONN_CARD.parquet",
+        "from_type": "ClosedCase",
+        "graph_type": "CASE_CONN_CARD",
+        "id_dtypes": {
+          "card_id": "str",
+          "case_id": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "card_id": 0,
+          "case_id": 0
+        },
+        "rows": 92,
+        "sha256": "436a3213492892bfab05be2252b6b47af8ee0196cc6539baf7000540200c6f15",
+        "size_bytes": 1944,
+        "to_type": "Card",
+        "unique_key_count": 92
+      },
+      "e_CASE_DEVICE": {
+        "columns": [
+          "case_id",
+          "device_id"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_CASE_DEVICE.parquet",
+        "from_type": "ClosedCase",
+        "graph_type": "CASE_DEVICE",
+        "id_dtypes": {
+          "case_id": "str",
+          "device_id": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "case_id": 0,
+          "device_id": 0
+        },
+        "rows": 5137,
+        "sha256": "3dbad23447b955060e284084d7a15326f930edea1f1de3dfb15d810847cf50b7",
+        "size_bytes": 47368,
+        "to_type": "DeviceProfile",
+        "unique_key_count": 5137
+      },
+      "e_CASE_TXN": {
+        "columns": [
+          "case_id",
+          "txn_id"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_CASE_TXN.parquet",
+        "from_type": "ClosedCase",
+        "graph_type": "CASE_TXN",
+        "id_dtypes": {
+          "case_id": "str",
+          "txn_id": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "case_id": 0,
+          "txn_id": 0
+        },
+        "rows": 14955,
+        "sha256": "93e545d3c2d564d7de024400ce724bd3b7fcd76e4bbcde4e43e1a7ce5cc43d40",
+        "size_bytes": 151074,
+        "to_type": "Transaction",
+        "unique_key_count": 14955
+      },
+      "e_FROM_DEVICE": {
+        "columns": [
+          "from",
+          "device_id"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_FROM_DEVICE.parquet",
+        "from_type": "Transaction",
+        "graph_type": "FROM_DEVICE",
+        "id_dtypes": {
+          "device_id": "str",
+          "from": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "device_id": 0,
+          "from": 0
+        },
+        "rows": 140784,
+        "sha256": "9e8620c6e50ef48da529705df318988edd279009310e136ceb0d98dda13e5a57",
+        "size_bytes": 1171982,
+        "to_type": "DeviceProfile",
+        "unique_key_count": 140784
+      },
+      "e_NEXT_TXN": {
+        "columns": [
+          "txn_id",
+          "next_id",
+          "gap_seconds"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_NEXT_TXN.parquet",
+        "from_type": "Transaction",
+        "graph_type": "NEXT_TXN",
+        "id_dtypes": {
+          "next_id": "str",
+          "txn_id": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "next_id": 0,
+          "txn_id": 0
+        },
+        "rows": 576424,
+        "sha256": "c1a690dae87a576f54f879efc9db528af95cb5e04b3292350a11ce76b36d758e",
+        "size_bytes": 8974698,
+        "to_type": "Transaction",
+        "unique_key_count": 576424
+      },
+      "e_OWNS_CARD": {
+        "columns": [
+          "customer_id",
+          "card_id",
+          "first_seen"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_OWNS_CARD.parquet",
+        "from_type": "Customer",
+        "graph_type": "OWNS_CARD",
+        "id_dtypes": {
+          "card_id": "str",
+          "customer_id": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "card_id": 0,
+          "customer_id": 0
+        },
+        "rows": 14318,
+        "sha256": "e357cd794a81a7f1ac27419776eb8f0bf9c3e7003bd82039ee3c42f991011d36",
+        "size_bytes": 301842,
+        "to_type": "Card",
+        "unique_key_count": 14318
+      },
+      "e_PAID_WITH": {
+        "columns": [
+          "from",
+          "card_id"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_PAID_WITH.parquet",
+        "from_type": "Transaction",
+        "graph_type": "PAID_WITH",
+        "id_dtypes": {
+          "card_id": "str",
+          "from": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "card_id": 0,
+          "from": 0
+        },
+        "rows": 590742,
+        "sha256": "737e54b06657c8c1ed330aaa756e59acd3a26e6492223595225ab83b274e7f29",
+        "size_bytes": 3995246,
+        "to_type": "Card",
+        "unique_key_count": 590742
+      },
+      "e_P_EMAIL": {
+        "columns": [
+          "from",
+          "domain"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_P_EMAIL.parquet",
+        "from_type": "Transaction",
+        "graph_type": "P_EMAIL",
+        "id_dtypes": {
+          "domain": "str",
+          "from": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "domain": 0,
+          "from": 0
+        },
+        "rows": 496262,
+        "sha256": "bec85c45184b5d7acd6f7bd5dc4e78b826e70e72bd01438bb5f23e2e244a1852",
+        "size_bytes": 2818929,
+        "to_type": "EmailDomain",
+        "unique_key_count": 496262
+      },
+      "e_R_EMAIL": {
+        "columns": [
+          "from",
+          "domain"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "e_R_EMAIL.parquet",
+        "from_type": "Transaction",
+        "graph_type": "R_EMAIL",
+        "id_dtypes": {
+          "domain": "str",
+          "from": "str"
+        },
+        "kind": "e",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "domain": 0,
+          "from": 0
+        },
+        "rows": 137453,
+        "sha256": "a863e1de339c330efed4acbab9f786aef2d734912e5f88239b7a97b3fbfbce5c",
+        "size_bytes": 897679,
+        "to_type": "EmailDomain",
+        "unique_key_count": 137453
+      },
+      "v_BillingRegion": {
+        "columns": [
+          "region_id"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "v_BillingRegion.parquet",
+        "from_type": null,
+        "graph_type": "BillingRegion",
+        "id_dtypes": {
+          "region_id": "str"
+        },
+        "kind": "v",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "region_id": 0
+        },
+        "rows": 332,
+        "sha256": "228edfc2131ecc9a0ff18ac46e2fbc1d44bae37104648e05630af304090fb284",
+        "size_bytes": 2880,
+        "to_type": null,
+        "unique_key_count": 332
+      },
+      "v_Card": {
+        "columns": [
+          "card_id",
+          "first_ts",
+          "last_ts",
+          "n_txn",
+          "network",
+          "card_type"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "v_Card.parquet",
+        "from_type": null,
+        "graph_type": "Card",
+        "id_dtypes": {
+          "card_id": "str"
+        },
+        "kind": "v",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "card_id": 0
+        },
+        "rows": 14318,
+        "sha256": "15d205f262205511dae37f029e9c032adcb1e824d05431f62690032a54c8c14d",
+        "size_bytes": 358315,
+        "to_type": null,
+        "unique_key_count": 14318
+      },
+      "v_ClosedCase": {
+        "columns": [
+          "case_id",
+          "customer_id",
+          "card_id",
+          "outcome",
+          "pattern",
+          "opened_at",
+          "closed_at",
+          "n_txns",
+          "exposure_usd",
+          "report_filed",
+          "actions",
+          "notes"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "v_ClosedCase.parquet",
+        "from_type": null,
+        "graph_type": "ClosedCase",
+        "id_dtypes": {
+          "case_id": "str"
+        },
+        "kind": "v",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "case_id": 0
+        },
+        "rows": 5565,
+        "sha256": "bff086d272eb097cd7d602149cdf7e09b35138d7406b24f00e14713693f16f83",
+        "size_bytes": 467949,
+        "to_type": null,
+        "unique_key_count": 5565
+      },
+      "v_Customer": {
+        "columns": [
+          "customer_id",
+          "first_ts",
+          "last_ts",
+          "n_txn",
+          "n_cards"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "v_Customer.parquet",
+        "from_type": null,
+        "graph_type": "Customer",
+        "id_dtypes": {
+          "customer_id": "str"
+        },
+        "kind": "v",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "customer_id": 0
+        },
+        "rows": 13553,
+        "sha256": "06cbb26bbe3f3b8eb77de9c434527fef26ee2bcde12fa2a760790d1546fe8ed0",
+        "size_bytes": 327909,
+        "to_type": null,
+        "unique_key_count": 13553
+      },
+      "v_DeviceProfile": {
+        "columns": [
+          "device_id",
+          "n_txn",
+          "n_cards",
+          "device_info",
+          "os",
+          "browser",
+          "screen",
+          "device_type",
+          "n_fraud_cases"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "v_DeviceProfile.parquet",
+        "from_type": null,
+        "graph_type": "DeviceProfile",
+        "id_dtypes": {
+          "device_id": "str"
+        },
+        "kind": "v",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "device_id": 0
+        },
+        "rows": 9705,
+        "sha256": "acfd8899262d466eb28f3c6f7a659804ebae3994e29c1d174315a27f919cdbbb",
+        "size_bytes": 230995,
+        "to_type": null,
+        "unique_key_count": 9705
+      },
+      "v_EmailDomain": {
+        "columns": [
+          "domain",
+          "is_free"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "v_EmailDomain.parquet",
+        "from_type": null,
+        "graph_type": "EmailDomain",
+        "id_dtypes": {
+          "domain": "str"
+        },
+        "kind": "v",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "domain": 0
+        },
+        "rows": 60,
+        "sha256": "93bd2233b69a0695e18801f10889bf773db50a119f19a828d55d60098fae23e6",
+        "size_bytes": 2231,
+        "to_type": null,
+        "unique_key_count": 60
+      },
+      "v_PolicyChunk": {
+        "columns": [
+          "chunk_id",
+          "kind",
+          "title",
+          "text"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "v_PolicyChunk.parquet",
+        "from_type": null,
+        "graph_type": "PolicyChunk",
+        "id_dtypes": {
+          "chunk_id": "str"
+        },
+        "kind": "v",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "chunk_id": 0
+        },
+        "rows": 17,
+        "sha256": "e58d9020db8a1238c8e36432f421a8ebf159cdd8389df540804d4517855e4e82",
+        "size_bytes": 11790,
+        "to_type": null,
+        "unique_key_count": 17
+      },
+      "v_Transaction": {
+        "columns": [
+          "txn_id",
+          "ts",
+          "amount",
+          "product_cd",
+          "channel",
+          "risk_score",
+          "card1",
+          "card2",
+          "card3",
+          "card5",
+          "addr1",
+          "addr2",
+          "dist1",
+          "dist2",
+          "p_email",
+          "r_email",
+          "m_flags",
+          "c_counts",
+          "d_deltas",
+          "id_15",
+          "id_23",
+          "device_type"
+        ],
+        "duplicate_key_rows": 0,
+        "file": "v_Transaction.parquet",
+        "from_type": null,
+        "graph_type": "Transaction",
+        "id_dtypes": {
+          "txn_id": "str"
+        },
+        "kind": "v",
+        "missing_id_columns": [],
+        "non_string_id_columns": [],
+        "null_or_empty_id_total": 0,
+        "null_or_empty_ids": {
+          "txn_id": 0
+        },
+        "rows": 590742,
+        "sha256": "dc546207e80c388e3daba1197a18a7af321e3f9e69af79ba68abc578e5cb3cb9",
+        "size_bytes": 14288427,
+        "to_type": null,
+        "unique_key_count": 590742
+      }
+    },
+    "errors": [],
+    "expected_edge_counts": {
+      "BILLED_IN": 525003,
+      "CASE_CARD": 5565,
+      "CASE_CONN_CARD": 92,
+      "CASE_DEVICE": 5137,
+      "CASE_TXN": 14955,
+      "FROM_DEVICE": 140784,
+      "NEXT_TXN": 576424,
+      "OWNS_CARD": 14318,
+      "PAID_WITH": 590742,
+      "P_EMAIL": 496262,
+      "R_EMAIL": 137453
+    },
+    "expected_vertex_counts": {
+      "BillingRegion": 332,
+      "Card": 14318,
+      "ClosedCase": 5565,
+      "Customer": 13553,
+      "DeviceProfile": 9705,
+      "EmailDomain": 60,
+      "PolicyChunk": 17,
+      "Transaction": 590742
+    },
+    "generated_at": "2026-09-24T22:23:02.302817Z",
+    "load_directory": "C:\\Users\\ashus\\OneDrive\\Desktop\\HH GOA\\Task 4\\fraudlens\\pipeline\\out\\load",
+    "next_txn": {
+      "checks": {
+        "chronological": true,
+        "endpoints_exist": true,
+        "gap_is_uint64": true,
+        "no_self_edges": true,
+        "one_incoming_per_target": true,
+        "one_outgoing_per_source": true,
+        "same_card": true
+      },
+      "metrics": {
+        "max_gap_seconds": 15547063,
+        "min_gap_seconds": 0,
+        "rows": 576424,
+        "unique_sources": 576424,
+        "unique_targets": 576424
+      },
+      "valid": true
+    },
+    "orphan_checks": [
+      {
+        "edge_type": "OWNS_CARD",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "Customer",
+        "target_type": "Card",
+        "valid": true
+      },
+      {
+        "edge_type": "PAID_WITH",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "Transaction",
+        "target_type": "Card",
+        "valid": true
+      },
+      {
+        "edge_type": "FROM_DEVICE",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "Transaction",
+        "target_type": "DeviceProfile",
+        "valid": true
+      },
+      {
+        "edge_type": "P_EMAIL",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "Transaction",
+        "target_type": "EmailDomain",
+        "valid": true
+      },
+      {
+        "edge_type": "R_EMAIL",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "Transaction",
+        "target_type": "EmailDomain",
+        "valid": true
+      },
+      {
+        "edge_type": "BILLED_IN",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "Transaction",
+        "target_type": "BillingRegion",
+        "valid": true
+      },
+      {
+        "edge_type": "NEXT_TXN",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "Transaction",
+        "target_type": "Transaction",
+        "valid": true
+      },
+      {
+        "edge_type": "CASE_TXN",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "ClosedCase",
+        "target_type": "Transaction",
+        "valid": true
+      },
+      {
+        "edge_type": "CASE_CARD",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "ClosedCase",
+        "target_type": "Card",
+        "valid": true
+      },
+      {
+        "edge_type": "CASE_CONN_CARD",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "ClosedCase",
+        "target_type": "Card",
+        "valid": true
+      },
+      {
+        "edge_type": "CASE_DEVICE",
+        "orphan_source_ids": 0,
+        "orphan_target_ids": 0,
+        "source_type": "ClosedCase",
+        "target_type": "DeviceProfile",
+        "valid": true
+      }
+    ],
+    "valid": true
+  }
+}

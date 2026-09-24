@@ -176,11 +176,11 @@ def build_sar(
         )
     elif corroborated:
         sentences.append(
-            "The filing is based on corroborated connected-card fraud, not on the dollar threshold."
+            "The filing rests on corroborated connected-card fraud rather than on the monetary amount."
         )
     elif coordinated:
         sentences.append(
-            "The filing is based on corroborated coordinated or repeated abuse, not on the dollar threshold."
+            "The filing rests on corroborated coordinated or repeated abuse rather than on the monetary amount."
         )
     else:
         sentences.append(

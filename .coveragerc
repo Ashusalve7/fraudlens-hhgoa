@@ -1,0 +1,15 @@
+[run]
+branch = true
+omit =
+    fraudlens/dashboard/app.py
+    fraudlens/pipeline/analyze_card_rule*.py
+    fraudlens/pipeline/build_load_files.py
+    fraudlens/pipeline/create_schema.py
+    fraudlens/pipeline/derive_card_ids*.py
+    fraudlens/pipeline/install_queries.py
+    fraudlens/pipeline/load_graph.py
+    fraudlens/pipeline/tg.py
+
+[report]
+show_missing = true
+skip_covered = false

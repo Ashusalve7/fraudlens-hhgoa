@@ -349,8 +349,15 @@ def _online_episode(
         ):
             return True
         if bool(features.get("amt_ratio_30d") and _number(features.get("amt_ratio_30d")) >= 2.0):
-            # A high amount ratio is evidence for the episode, but only when the
-            # row is close enough to the trigger to be part of the same burst.
+            # A high amount ratio is evidence for the episode, but for a
+            # new-device branch it must not pull ordinary rows from another
+            # device into the subject episode.
+            if new_device and not (
+                is_new_device(row)
+                or is_proxy(row)
+                or (device and txn_device_id(row) == device)
+            ):
+                return False
             return _distance(txn_ts(row), center) <= PATTERN_WINDOW.total_seconds()
         if bool(features.get("online_share_shift") and _number(features.get("online_share_shift")) >= 0.25):
             return _distance(txn_ts(row), center) <= PATTERN_WINDOW.total_seconds()
@@ -360,7 +367,18 @@ def _online_episode(
     # A 2-4 transaction burst is itself the sponsor's CNP anomaly.  Limit the
     # selection to a compact cluster; do not import an entire 48-hour history.
     if burst and len(suspicious) < 2:
-        suspicious = _nearest_cluster(online, center, predicate=lambda r: True, max_rows=4)
+        burst_corroborated = bool(
+            new_device
+            and (
+                float(features.get("new_dev_share", 0.0) or 0.0) >= 0.25
+                or float(features.get("proxy_share", 0.0) or 0.0) >= 0.50
+            )
+        ) or bool(
+            (not new_device)
+            and float(features.get("amt_ratio_30d", 0.0) or 0.0) >= 2.0
+        )
+        if burst_corroborated:
+            suspicious = _nearest_cluster(online, center, predicate=lambda r: True, max_rows=4)
     if not suspicious:
         suspicious = [dict(flagged)]
     return _unique_rows(suspicious + [flagged])
@@ -447,6 +465,14 @@ def _undocumented_episode(
             and _distance(txn_ts(row), center) <= timedelta(days=7).total_seconds()
         ):
             selected.append(row)
+    # A corroborated cross-customer signal can coexist with a documented-looking
+    # CNP burst on the subject card. Preserve that burst as the reportable
+    # subject-card episode, but only when the production feature explicitly
+    # found a coordinated signal and an online burst.
+    if bool(features.get("coordinated_signal")) and int(
+        features.get("n_online_48h") or 0
+    ) >= 2:
+        selected.extend(_online_episode(flagged, rows, features, new_device=True))
     return _unique_rows(selected + [flagged])
 
 

@@ -1,16 +1,29 @@
 {
-  "rule": "card_id = customer_id + '-K' + rank of (card1,card4,card6) in customer's sorted identities",
-  "validation_flagged": {
-    "hits": 4665,
-    "total": 4665,
-    "acc": 1.0
-  },
-  "validation_all_txns": {
-    "hits": 14955,
-    "total": 14955,
-    "acc": 1.0,
-    "bad_cases": 0
-  },
+  "identity_fields": [
+    "card1",
+    "card4",
+    "card6"
+  ],
+  "missing_value": "_NA_",
   "n_cards": 14318,
-  "n_customers": 13553
+  "n_customers": 13553,
+  "n_transactions": 590742,
+  "rule": "card_id = customer_id + '-K' + rank of (card1,card4,card6) in customer's sorted identities",
+  "validation_all_txns": {
+    "acc": 1.0,
+    "bad_cases": 0,
+    "hits": 14955,
+    "mismatches": [],
+    "total": 14955
+  },
+  "validation_connected_cards": {
+    "known": 0,
+    "total": 0,
+    "unknown": 0
+  },
+  "validation_flagged": {
+    "acc": 1.0,
+    "hits": 4665,
+    "total": 4665
+  }
 }

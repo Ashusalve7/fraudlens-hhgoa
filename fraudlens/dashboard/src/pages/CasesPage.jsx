@@ -32,7 +32,6 @@ function CaseCard({ caseRecord }) {
     <Link
       to={`/cases/${encodeURIComponent(caseRecord.case_id)}`}
       className={`case-card risk-${risk.key}`}
-      aria-label={`Open ${caseRecord.case_id}, ${getVerdictLabel(caseRecord.verdict)}, ${risk.label} risk`}
     >
       <div className="case-card-top">
         <strong className="case-id" translate="no">{caseRecord.case_id}</strong>
@@ -358,6 +357,7 @@ export default function CasesPage() {
               id="sar-filter"
               name="sar"
               type="checkbox"
+              aria-label="SAR drafts only"
               checked={sarOnly}
               onChange={event => updateFilter('sar', event.target.checked ? 'true' : '', 'false')}
             />

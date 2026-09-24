@@ -3,141 +3,120 @@
   "case": {
     "status": "closed_fraud",
     "verdict": "fraud",
-    "fraud_probability": 0.9,
-    "pattern": "account_takeover",
+    "fraud_probability": 0.9599,
+    "pattern": "none",
     "pattern_description": "",
     "affected_txn_ids": [
-      "3509355",
-      "3509466",
-      "3513495",
-      "3513664",
-      "3514137",
-      "3517314",
-      "3517460",
-      "3520325"
+      "3514948"
     ],
-    "first_suspicious_txn_id": "3509355",
+    "first_suspicious_txn_id": "3514948",
     "connected_card_ids": [],
     "connected_device_profiles": [],
-    "exposure_usd": 10797.26,
+    "exposure_usd": 111.92,
     "evidence": [
       {
-        "claim": "Flagged transaction 3514948: $111.92 in_person (W) with model risk score 0.87 - a reason to look, not a verdict.",
+        "claim": "Flagged transaction 3514948: $111.92 in_person (W) with model risk score 0.87; the score is an investigation input, not a verdict.",
         "source": "graph",
-        "ref": "query:get_transaction_context",
+        "ref": "query:get_transaction_context(txn_id=3514948)",
         "entity_ids": [
           "3514948"
         ]
       },
       {
-        "claim": "Card window shows 8 transactions within +-24h of the trigger (sum $10,797.26); card's 30-day baseline mean ratio 0.82.",
+        "claim": "The bounded graph algorithm returned 665 node(s) and 664 observed edge(s); its scope is the returned relation set, not an unbounded global community.",
         "source": "graph",
-        "ref": "query:get_card_window",
+        "ref": "mcp:graph_ring(txn_id=3514948)",
         "entity_ids": [
-          "3509355",
-          "3509466",
-          "3513495",
-          "3513664",
-          "3514137",
-          "3517314",
-          "3517460",
-          "3520325"
+          "3514948"
         ]
       },
       {
-        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-3846, CC-2597, CC-2097).",
+        "claim": "Retrieved sponsor policy chunk '1. Actions' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
         "source": "graph",
-        "ref": "query:find_similar_cases",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-03fa4768ea71e63a5e93d19e)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '3. Rules' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions. Rules: R1|R10|R2|R3|R4|R5|R6|R7|R8|R9.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-52b8f607470089c2ed45765b)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk 'Things to know' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-c72ff9e45c708e8326186f2e)",
+        "entity_ids": []
+      },
+      {
+        "claim": "The bounded episode selected 1 transaction(s), totaling $111.92, from the card-window query run from 2016-10-06 00:46:14 through 2016-12-05 03:46:14.",
+        "source": "graph",
+        "ref": "query:get_card_window(start=2016-10-06 00:46:14, end=2016-12-05 03:46:14)",
         "entity_ids": [
-          "CC-3846",
-          "CC-2597",
-          "CC-2097"
+          "3514948"
         ]
       },
       {
-        "claim": "Customer states they did not make this card-present transaction of $111.92; card still in possession (assumption based on nearest similar closed cases: CC-3846, CC-2597, CC-2097).",
+        "claim": "Evidence request 1 recorded this explicitly simulated response: Simulated customer response: the customer states they did not authorize the in_person transaction of $111.92; the response assumption is based on the calibrated prior.",
         "source": "customer",
         "ref": "evidence_request:1",
         "entity_ids": []
       }
     ],
-    "similar_prior_cases": [
-      "CC-3846",
-      "CC-2597",
-      "CC-2097"
-    ],
-    "summary": "Alert HHG-007: the model scored it 0.87 on transaction 3514948 ($111.92, in_person). Investigation supports account takeover: 8 transaction(s) in the episode, exposure $10,797.26. The customer denied the transaction when asked. Probability 0.90.",
+    "similar_prior_cases": [],
+    "summary": "Alert HHG-007: the model scored transaction 3514948 at 0.87 ($111.92, in_person). Investigation supports none with 1 transaction(s) in the bounded episode and $111.92 exposure. The separately recorded customer evidence response denies the transaction.",
     "written_to_graph": true,
     "graph_case_id": "AG-HHG-007"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 30,
-      "assumed_response": "Customer states they did not make this card-present transaction of $111.92; card still in possession (assumption based on nearest similar closed cases: CC-3846, CC-2597, CC-2097)."
+      "asked_after_step": 7,
+      "assumed_response": "Simulated customer response: the customer states they did not authorize the in_person transaction of $111.92; the response assumption is based on the calibrated prior."
     }
   ],
   "next_best_actions": {
     "initial": [
       {
-        "action": "ESCALATE_TO_ANALYST",
-        "route": "auto",
-        "reason": "R8: uncertain verdict (p=0.57) with exposure $10,797.26 over $500"
-      },
-      {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: verify before any block"
+        "reason": "R1: probability 0.75 does not satisfy the high-confidence blocking rule"
+      },
+      {
+        "action": "STEP_UP_AUTH",
+        "route": "auto",
+        "reason": "R1: use step-up authentication as the lower-impact alternative"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: open a case when probability reaches 0.30 or evidence is collected"
       }
     ],
     "final": [
       {
         "action": "BLOCK_CARD",
-        "route": "L2",
+        "route": "L1",
         "reason": "R2: customer denied the transaction"
       },
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "R2: open internal case with the evidence attached"
-      },
-      {
-        "action": "FILE_REPORT",
-        "route": "L2",
-        "reason": "R2: exposure exceeds $1,000 or case connects to a shared element/other card's fraud"
+        "reason": "R2: open an internal case with the evidence attached"
       }
     ],
-    "what_changed": "Customer denial raised probability from 0.57 to 0.90; recommendation moved from verify to block/case/report per R2."
+    "what_changed": "The final recommendation added BLOCK_CARD; removed STEP_UP_AUTH, VERIFY_WITH_CUSTOMER."
   },
   "sar": {
-    "file": true,
-    "reason": "3a/R2/R6/R9: exposure $10,797.26 exceeds $1,000",
-    "narrative": "On 2016-12-05, card C09933-K2 belonging to customer C09933 was used for 8 transaction(s) totaling $10,797.26, beginning with transaction 3509355 ($111.92, in_person channel). The activity is inconsistent with the cardholder's established pattern and is classified as account takeover. Graph analysis linked the involved device profile and payment card to related activity on other cards within the same window, indicating a common origin across accounts. The cardholder was asked to validate the activity; the recorded response supported unauthorized use. Based on the exposure exceeding $1,000 and the connection to other compromised cards, the bank files this report on the described activity. Affected transactions: 3509355, 3509466, 3513495, 3513664, 3514137, 3517314, 3517460, 3520325.",
-    "subjects": [
-      "C09933",
-      "C09933-K2"
-    ],
-    "total_amount_usd": 10797.26,
-    "activity_dates": [
-      "2016-12-05",
-      "2016-12-05"
-    ]
+    "file": false,
+    "reason": "3a: case only; exposure is not above $1,000 and no connected fraud or coordinated abuse is corroborated",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
   },
-  "stop_reason": "A verification response settled the question (policy 6).",
-  "tool_calls": 31,
+  "stop_reason": "A recorded verification response settled the question (policy 6).",
+  "tool_calls": 8,
   "tokens": 0,
-  "latency_s": 3.53,
-  "_states": [
-    "TRIGGERED",
-    "CONTEXT_RETRIEVED",
-    "EVIDENCE_GATHERED",
-    "PATTERNS_ASSESSED",
-    "MEMORY_RETRIEVED",
-    "NBA_INITIAL",
-    "EVIDENCE_REQUESTED",
-    "EVIDENCE_RECEIVED",
-    "NBA_FINAL",
-    "CASE_WRITTEN",
-    "ANSWER_EXPORTED"
-  ]
+  "latency_s": 6.4575
 }

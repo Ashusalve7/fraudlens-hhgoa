@@ -1,66 +1,76 @@
 {
   "case_id": "HHG-002",
   "case": {
-    "status": "closed_fraud",
-    "verdict": "fraud",
-    "fraud_probability": 0.9,
-    "pattern": "card_not_present_fraud",
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.1225,
+    "pattern": "none",
     "pattern_description": "",
-    "affected_txn_ids": [
-      "3478782"
-    ],
-    "first_suspicious_txn_id": "3478782",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
     "connected_card_ids": [],
     "connected_device_profiles": [],
-    "exposure_usd": 292.36,
+    "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "Flagged transaction 3478782: $292.36 online (C) with model risk score 0.79 - a reason to look, not a verdict.",
+        "claim": "Flagged transaction 3478782: $292.36 online (C) with model risk score 0.79; the score is an investigation input, not a verdict.",
         "source": "graph",
-        "ref": "query:get_transaction_context",
+        "ref": "query:get_transaction_context(txn_id=3478782)",
         "entity_ids": [
           "3478782"
         ]
       },
       {
-        "claim": "Card window shows 1 transactions within +-24h of the trigger (sum $292.36); card's 30-day baseline mean ratio 6.31.",
+        "claim": "The bounded graph algorithm returned 64 node(s) and 63 observed edge(s); its scope is the returned relation set, not an unbounded global community.",
         "source": "graph",
-        "ref": "query:get_card_window",
+        "ref": "mcp:graph_ring(txn_id=3478782)",
         "entity_ids": [
           "3478782"
         ]
       },
       {
-        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-2517, CC-1708, CC-1400).",
+        "claim": "Retrieved sponsor policy chunk '1. Actions' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions.",
         "source": "graph",
-        "ref": "query:find_similar_cases",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-03fa4768ea71e63a5e93d19e)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '3b. The next best action can change' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions. Rules: R1|R2.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-ef26c3d7a59d5e9d156f8029)",
+        "entity_ids": []
+      },
+      {
+        "claim": "Retrieved sponsor policy chunk '3. Rules' was ranked for this case; the deterministic R1-R10 policy engine, not retrieval score, controls actions. Rules: R1|R10|R2|R3|R4|R5|R6|R7|R8|R9.",
+        "source": "graph",
+        "ref": "mcp:policy_retrieval(chunk_id=PC-52b8f607470089c2ed45765b)",
+        "entity_ids": []
+      },
+      {
+        "claim": "The bounded episode selected 1 transaction(s), totaling $292.36, from the card-window query run from 2016-09-23 17:27:07 through 2016-11-22 23:27:07.",
+        "source": "graph",
+        "ref": "query:get_card_window(start=2016-09-23 17:27:07, end=2016-11-22 23:27:07)",
         "entity_ids": [
-          "CC-2517",
-          "CC-1708",
-          "CC-1400"
+          "3478782"
         ]
       },
       {
-        "claim": "Customer states they did not make this online transaction of $292.36; card still in possession (assumption based on nearest similar closed cases: CC-2517, CC-1708, CC-1400).",
+        "claim": "Evidence request 1 recorded this explicitly simulated response: Simulated customer response: the customer confirms the online transaction of $292.36; the response assumption is based on the calibrated prior.",
         "source": "customer",
         "ref": "evidence_request:1",
         "entity_ids": []
       }
     ],
-    "similar_prior_cases": [
-      "CC-2517",
-      "CC-1708",
-      "CC-1400"
-    ],
-    "summary": "Alert HHG-002: the model scored it 0.79 on transaction 3478782 ($292.36, online). Investigation supports card not present fraud: 1 transaction(s) in the episode, exposure $292.36. The customer denied the transaction when asked. Probability 0.90.",
+    "similar_prior_cases": [],
+    "summary": "Alert HHG-002: the model scored transaction 3478782 at 0.79 ($292.36, online). The available evidence is consistent with legitimate activity; no fraud episode is asserted. The separately recorded customer evidence response confirms the transaction.",
     "written_to_graph": true,
     "graph_case_id": "AG-HHG-002"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 7,
-      "assumed_response": "Customer states they did not make this online transaction of $292.36; card still in possession (assumption based on nearest similar closed cases: CC-2517, CC-1708, CC-1400)."
+      "asked_after_step": 6,
+      "assumed_response": "Simulated customer response: the customer confirms the online transaction of $292.36; the response assumption is based on the calibrated prior."
     }
   ],
   "next_best_actions": {
@@ -68,56 +78,38 @@
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: probability 0.66 below 0.70 on current signals - verify before blocking"
+        "reason": "R1: probability 0.53 does not satisfy the high-confidence blocking rule"
       },
       {
         "action": "STEP_UP_AUTH",
         "route": "auto",
-        "reason": "R1: step-up authentication as the low-impact alternative"
+        "reason": "R1: use step-up authentication as the lower-impact alternative"
       },
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: case opened (probability >= 0.30 or evidence requested)"
+        "reason": "3a: open a case when probability reaches 0.30 or evidence is collected"
       }
     ],
     "final": [
       {
-        "action": "BLOCK_CARD",
-        "route": "L1",
-        "reason": "R2: customer denied the transaction"
-      },
-      {
-        "action": "CREATE_CASE",
+        "action": "CLOSE_NO_FRAUD",
         "route": "auto",
-        "reason": "R2: open internal case with the evidence attached"
+        "reason": "R3: customer confirmed the transaction"
       }
     ],
-    "what_changed": "Customer denial raised probability from 0.66 to 0.90; recommendation moved from verify to block/case/report per R2."
+    "what_changed": "The final recommendation added CLOSE_NO_FRAUD; removed CREATE_CASE, STEP_UP_AUTH, VERIFY_WITH_CUSTOMER."
   },
   "sar": {
     "file": false,
-    "reason": "3a: case only - exposure under $1,000, no shared or undocumented link (most cases never need a report)",
+    "reason": "3a: no report without confirmed or strongly suspected fraud",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "A verification response settled the question (policy 6).",
-  "tool_calls": 8,
+  "stop_reason": "A recorded verification response settled the question (policy 6).",
+  "tool_calls": 7,
   "tokens": 0,
-  "latency_s": 3.43,
-  "_states": [
-    "TRIGGERED",
-    "CONTEXT_RETRIEVED",
-    "EVIDENCE_GATHERED",
-    "PATTERNS_ASSESSED",
-    "MEMORY_RETRIEVED",
-    "NBA_INITIAL",
-    "EVIDENCE_REQUESTED",
-    "EVIDENCE_RECEIVED",
-    "NBA_FINAL",
-    "CASE_WRITTEN",
-    "ANSWER_EXPORTED"
-  ]
+  "latency_s": 6.5664
 }

@@ -29,7 +29,9 @@ MISSING = "_NA_"
 
 def _normalise(series: pd.Series) -> pd.Series:
     """Use one canonical spelling for every card-identity component."""
-    return series.astype("string").fillna(MISSING).replace({"": MISSING, "nan": MISSING, "None": MISSING})
+    text = series.astype("string").str.strip()
+    empty = text.isna() | text.str.lower().isin({"", "nan", "none", "<na>", "_na_"})
+    return text.mask(empty, MISSING)
 
 
 def _as_txn_ids(series: pd.Series) -> list[str]:
@@ -83,8 +85,14 @@ def load_transactions() -> pd.DataFrame:
 
 
 def build_map(tx: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    normalized = tx.copy()
+    normalized["customer_id"] = normalized["customer_id"].astype(str).str.strip()
+    if (normalized["customer_id"] == "").any():
+        raise ValueError("transactions contain an empty customer_id")
+    for field in FIELDS:
+        normalized[field] = _normalise(normalized[field])
     identities = (
-        tx.groupby(["customer_id"] + FIELDS, sort=False, dropna=False)
+        normalized.groupby(["customer_id"] + FIELDS, sort=False, dropna=False)
         .agg(first_ts=("ts", "min"), n_txn=("ts", "size"))
         .reset_index()
         .sort_values(["customer_id"] + FIELDS, kind="stable")
@@ -94,7 +102,7 @@ def build_map(tx: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     if identities["card_id"].duplicated().any():
         raise ValueError("card_id collision in derived map")
 
-    tx_map = tx.merge(
+    tx_map = normalized.merge(
         identities[["customer_id"] + FIELDS + ["card_id"]],
         on=["customer_id"] + FIELDS,
         how="left",
@@ -104,7 +112,11 @@ def build_map(tx: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         raise ValueError(f"unmapped transactions: {int(tx_map['card_id'].isna().sum())}")
     if tx_map["TransactionID"].duplicated().any():
         raise ValueError("transaction-to-card map is not one-to-one")
-    return identities, tx_map[["TransactionID", "customer_id", "card_id"] + FIELDS]
+    result = tx_map[["TransactionID", "customer_id", "card_id"] + FIELDS].copy()
+    for column in ("TransactionID", "customer_id", "card_id", *FIELDS):
+        result[column] = result[column].astype(str)
+    result = result.sort_values("TransactionID", kind="stable").reset_index(drop=True)
+    return identities, result
 
 
 def validate_cases(tx_map: pd.DataFrame, identities: pd.DataFrame) -> dict[str, object]:

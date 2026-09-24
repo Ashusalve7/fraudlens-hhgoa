@@ -7,12 +7,9 @@ produces a manifest that the loader uses for resumable, verifiable upserts.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
-import sys
 from pathlib import Path
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -29,14 +26,13 @@ try:  # Works both as ``python pipeline/build_load_files.py`` and as a package.
     from .embeddings import EMBEDDING_DIM, EMBEDDING_MODEL, embed_many
     from .load_contract import (
         MANIFEST_PATH,
-        PLAN,
         atomic_write_json,
         inspect_sources,
         source_manifest,
     )
 except ImportError:  # pragma: no cover - script execution path
     from embeddings import EMBEDDING_DIM, EMBEDDING_MODEL, embed_many
-    from load_contract import MANIFEST_PATH, PLAN, atomic_write_json, inspect_sources, source_manifest
+    from load_contract import MANIFEST_PATH, atomic_write_json, inspect_sources, source_manifest
 
 TXN_KEEP = [
     "TransactionID", "ts", "TransactionAmt", "ProductCD", "channel", "risk_score",
@@ -56,9 +52,51 @@ def clean_str(values: pd.Series) -> pd.Series:
     return values.astype("string").where(~na(values), "").astype(str)
 
 
+def _compact_flags(frame: pd.DataFrame, columns: list[str]) -> pd.Series:
+    """Serialize nonempty source counters without a per-cell Python apply."""
+    values = frame[columns].astype("string").fillna("")
+    invalid = values.isin(["", "nan", "None", "<NA>", "_NA_"])
+    result: list[str] = []
+    for row, masks in zip(
+        values.itertuples(index=False, name=None),
+        invalid.itertuples(index=False, name=None),
+        strict=True,
+    ):
+        result.append(
+            "|".join(
+                f"{column}={value}"
+                for column, value, keep in zip(columns, row, masks, strict=True)
+                if keep
+            )
+        )
+    return pd.Series(result, index=frame.index, dtype="string")
+
+
+def _profile_component(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    text = str(value).strip()
+    return "" if text.lower() in {"", "nan", "none", "<na>", "_na_"} else text
+
+
 def device_profile_id(device_info: object, os_: object, browser: object, screen: object) -> str:
-    key = "|".join("" if pd.isna(value) else str(value) for value in (device_info, os_, browser, screen))
-    return "DP-" + hashlib.md5(key.encode("utf-8")).hexdigest()[:12]
+    """Return a stable device ID, excluding wholly unknown profiles.
+
+    The four profile fields form the identity.  Treating four missing fields as
+    a real profile would connect every unidentified transaction through one
+    synthetic ``DP-*`` vertex.  Partially observed profiles remain valid.
+    """
+    components = (
+        _profile_component(device_info),
+        _profile_component(os_),
+        _profile_component(browser),
+        _profile_component(screen),
+    )
+    if not any(components):
+        return ""
+    # Keep the established delimiter/encoding so valid IDs remain stable across
+    # the unknown-profile fix.
+    return "DP-" + hashlib.md5("|".join(components).encode()).hexdigest()[:12]
 
 
 def atomic_parquet(frame: pd.DataFrame, path: Path) -> None:
@@ -167,7 +205,7 @@ def _policy_chunks() -> pd.DataFrame:
     ]
     result["chunk_id"] = [
         "PC-" + hashlib.sha256(
-            f"{row.source_path}|{row.source_anchor}|{row.chunk_index}|{row.content_hash}".encode("utf-8")
+            f"{row.source_path}|{row.source_anchor}|{row.chunk_index}|{row.content_hash}".encode()
         ).hexdigest()[:24]
         for row in result.itertuples(index=False)
     ]
@@ -183,12 +221,13 @@ def _read_identity() -> pd.DataFrame:
     identity = pd.read_csv(DATA / "identity.csv", usecols=IDENT_KEEP, low_memory=False)
     if identity["TransactionID"].duplicated().any():
         raise ValueError("identity.csv contains duplicate TransactionID values")
+    identity["TransactionID"] = identity["TransactionID"].astype(str)
     for column in ("id_15", "id_23", "DeviceType", "DeviceInfo", "id_30", "id_31", "id_33"):
         identity[column] = clean_str(identity[column])
     identity["device_id"] = [
         device_profile_id(device_info, os_, browser, screen)
         for device_info, os_, browser, screen in zip(
-            identity["DeviceInfo"], identity["id_30"], identity["id_31"], identity["id_33"]
+            identity["DeviceInfo"], identity["id_30"], identity["id_31"], identity["id_33"], strict=True
         )
     ]
     return identity
@@ -229,19 +268,28 @@ def _next_txn(tx: pd.DataFrame) -> pd.DataFrame:
     ordered = tx[["TransactionID", "card_id", "ts"]].rename(columns={"TransactionID": "txn_id"}).sort_values(
         ["card_id", "ts", "txn_id"], kind="stable"
     ).reset_index(drop=True)
+    # Graph primary IDs are STRING.  Sorting before conversion keeps numeric and
+    # nonnumeric source IDs deterministic; conversion also prevents pandas from
+    # upcasting shifted IDs to float.
+    ordered["txn_id"] = ordered["txn_id"].astype(str)
     ordered["next_id"] = ordered.groupby("card_id", sort=False)["txn_id"].shift(-1)
     ordered["next_ts"] = ordered.groupby("card_id", sort=False)["ts"].shift(-1)
     nxt = ordered.dropna(subset=["next_id", "next_ts"]).copy()
     gaps = (nxt["next_ts"] - nxt["ts"]).dt.total_seconds()
     if (gaps < 0).any() or (gaps % 1 != 0).any():
         raise ValueError("NEXT_TXN produced negative or fractional gap_seconds")
+    nxt["next_id"] = nxt["next_id"].astype(str)
     nxt["gap_seconds"] = gaps.round().astype("int64")
     if (nxt["txn_id"] == nxt["next_id"]).any() or nxt["txn_id"].duplicated().any() or nxt["next_id"].duplicated().any():
         raise ValueError("NEXT_TXN is not a one-to-one chronological chain")
     return nxt[["txn_id", "next_id", "gap_seconds"]]
 
 
-def _case_edges(cc: pd.DataFrame, tx: pd.DataFrame, known_cards: set[str]) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _case_edges(
+    cc: pd.DataFrame, tx: pd.DataFrame, known_cards: set[str]
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    tx = tx.copy()
+    tx["TransactionID"] = tx["TransactionID"].astype(str)
     rows: list[tuple[str, str]] = []
     for case in cc.itertuples(index=False):
         for txn_id in str(getattr(case, "txn_ids", "") or "").split("|"):
@@ -269,12 +317,13 @@ def _case_edges(cc: pd.DataFrame, tx: pd.DataFrame, known_cards: set[str]) -> tu
     if unknown:
         raise ValueError(f"CASE_CONN_CARD references {len(unknown)} unknown cards")
 
-    devices = tx[["TransactionID", "device_id"]].dropna(subset=["device_id"])
-    devices["device_id"] = devices["device_id"].astype(str)
+    devices = tx[["TransactionID", "device_id"]].copy()
+    devices["device_id"] = devices["device_id"].fillna("").astype(str)
+    devices = devices[~devices["device_id"].isin({"", MISSING})]
     case_device = case_txn.merge(
         devices.rename(columns={"TransactionID": "txn_id"}), on="txn_id", how="inner"
     )[["case_id", "device_id"]].drop_duplicates().reset_index(drop=True)
-    return case_txn, case_card, case_conn, case_device  # type: ignore[return-value]
+    return case_txn, case_card, case_conn, case_device
 
 
 def main() -> int:
@@ -302,15 +351,9 @@ def main() -> int:
         tx[column] = clean_str(tx[column])
     for column in ("card4", "card6"):
         tx[column] = clean_str(tx[column])
-    tx["m_flags"] = tx[[f"M{i}" for i in range(1, 10)]].apply(
-        lambda row: "|".join(f"M{i}={row[f'M{i}']}" for i in range(1, 10) if not na(pd.Series([row[f'M{i}']])).iloc[0]), axis=1
-    )
-    tx["c_counts"] = tx[[f"C{i}" for i in range(1, 15)]].apply(
-        lambda row: "|".join(f"C{i}={row[f'C{i}']}" for i in range(1, 15) if not na(pd.Series([row[f'C{i}']])).iloc[0]), axis=1
-    )
-    tx["d_deltas"] = tx[[f"D{i}" for i in range(1, 16)]].apply(
-        lambda row: "|".join(f"D{i}={row[f'D{i}']}" for i in range(1, 16) if not na(pd.Series([row[f'D{i}']])).iloc[0]), axis=1
-    )
+    tx["m_flags"] = _compact_flags(tx, [f"M{i}" for i in range(1, 10)])
+    tx["c_counts"] = _compact_flags(tx, [f"C{i}" for i in range(1, 15)])
+    tx["d_deltas"] = _compact_flags(tx, [f"D{i}" for i in range(1, 16)])
     tx = tx.merge(
         identity[["TransactionID", "id_15", "id_23", "DeviceType"]],
         on="TransactionID", how="left", validate="one_to_one",
@@ -359,7 +402,9 @@ def main() -> int:
     v_cust["n_txn"] = pd.to_numeric(v_cust["n_txn"], errors="coerce").fillna(0).astype("int64")
     atomic_parquet(v_cust, LOAD / "v_Customer.parquet")
 
-    tx_device = tx[tx["device_id"].notna()].copy()
+    known_device_mask = tx["device_id"].fillna("").astype(str).ne("")
+    known_device_mask &= tx["device_id"].fillna("").astype(str).ne(MISSING)
+    tx_device = tx[known_device_mask].copy()
     device_meta = (
         identity.groupby("device_id", sort=False)
         .agg(device_info=("DeviceInfo", "first"), os=("id_30", "first"),
@@ -414,11 +459,27 @@ def main() -> int:
     e_own = e_own[["customer_id", "card_id", "first_ts"]].rename(columns={"first_ts": "first_seen"})
     atomic_parquet(e_own, LOAD / "e_OWNS_CARD.parquet")
 
-    atomic_parquet(tx[["TransactionID", "card_id"]].rename(columns={"TransactionID": "from"}), LOAD / "e_PAID_WITH.parquet")
-    atomic_parquet(tx.loc[tx["device_id"].notna(), ["TransactionID", "device_id"]].rename(columns={"TransactionID": "from"}), LOAD / "e_FROM_DEVICE.parquet")
-    atomic_parquet(tx.loc[tx["P_emaildomain"] != "", ["TransactionID", "P_emaildomain"]].rename(columns={"TransactionID": "from", "P_emaildomain": "domain"}), LOAD / "e_P_EMAIL.parquet")
-    atomic_parquet(tx.loc[tx["R_emaildomain"] != "", ["TransactionID", "R_emaildomain"]].rename(columns={"TransactionID": "from", "R_emaildomain": "domain"}), LOAD / "e_R_EMAIL.parquet")
-    atomic_parquet(tx.loc[tx["addr1"] != "", ["TransactionID", "addr1"]].rename(columns={"TransactionID": "from", "addr1": "region_id"}), LOAD / "e_BILLED_IN.parquet")
+    paid_with = tx[["TransactionID", "card_id"]].rename(columns={"TransactionID": "from"})
+    paid_with["from"] = paid_with["from"].astype(str)
+    atomic_parquet(paid_with, LOAD / "e_PAID_WITH.parquet")
+    from_device = tx.loc[known_device_mask, ["TransactionID", "device_id"]].rename(columns={"TransactionID": "from"})
+    from_device["from"] = from_device["from"].astype(str)
+    atomic_parquet(from_device, LOAD / "e_FROM_DEVICE.parquet")
+    p_email = tx.loc[tx["P_emaildomain"] != "", ["TransactionID", "P_emaildomain"]].rename(
+        columns={"TransactionID": "from", "P_emaildomain": "domain"}
+    )
+    p_email["from"] = p_email["from"].astype(str)
+    atomic_parquet(p_email, LOAD / "e_P_EMAIL.parquet")
+    r_email = tx.loc[tx["R_emaildomain"] != "", ["TransactionID", "R_emaildomain"]].rename(
+        columns={"TransactionID": "from", "R_emaildomain": "domain"}
+    )
+    r_email["from"] = r_email["from"].astype(str)
+    atomic_parquet(r_email, LOAD / "e_R_EMAIL.parquet")
+    billed_in = tx.loc[tx["addr1"] != "", ["TransactionID", "addr1"]].rename(
+        columns={"TransactionID": "from", "addr1": "region_id"}
+    )
+    billed_in["from"] = billed_in["from"].astype(str)
+    atomic_parquet(billed_in, LOAD / "e_BILLED_IN.parquet")
     atomic_parquet(_next_txn(tx), LOAD / "e_NEXT_TXN.parquet")
 
     known_cards = set(v_card["card_id"].astype(str))
@@ -473,8 +534,9 @@ def main() -> int:
     manifest["builder"] = {
         "version": "fraudlens-builder/v2",
         "policy_source": "HHGOA_IEEE/README.md",
-        "case_device_rule": "direct ClosedCase.txn_ids -> Transaction.device_id",
-        "next_txn_rule": "stable per-card ts/TransactionID chain; integer non-negative gap",
+        "case_device_rule": "direct ClosedCase.txn_ids -> observed DeviceProfile only",
+        "unknown_device_rule": "exclude profiles with no DeviceInfo/OS/browser/screen evidence",
+        "next_txn_rule": "stable per-card ts/TransactionID chain; STRING IDs; integer non-negative gap",
     }
     atomic_write_json(MANIFEST_PATH, manifest)
     if not validation["valid"]:
