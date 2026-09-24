@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-24T23:21:47.678889+00:00",
-  "git_commit": "ffa79aeb3a9414847c77cf0276cb7a361fb66834",
+  "generated_at": "2026-09-24T23:23:17.046896+00:00",
+  "git_commit": "7a5b57cc4594bc84914988dae095274abade252c",
   "files": [
     {
       "path": "HHGOA_IEEE/case_pack.csv",
@@ -421,7 +421,7 @@
     {
       "path": "fraudlens/pipeline/out/graph_health.json",
       "bytes": 11514,
-      "sha256": "a6e926f6a69f98c7c79d71f3ae5a307a570e0c054eb8285ecba3cce25635738f"
+      "sha256": "e86cdc8a7d442f29d3e1ccd98e0cbcb019afdfe7c9044ee66b14dddf0bacf6db"
     },
     {
       "path": "fraudlens/pipeline/tg.py",

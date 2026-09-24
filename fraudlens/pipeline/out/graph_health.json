@@ -287,7 +287,7 @@
             "source_sha256": "e58d9020db8a1238c8e36432f421a8ebf159cdd8389df540804d4517855e4e82"
           }
         },
-        "run_id": "ecbbfec2-189e-471f-999d-d62c378c6311",
+        "run_id": "fea025cd-6309-4f45-96dc-0b34eb1edb2b",
         "selected": [
           "e_BILLED_IN",
           "e_CASE_CARD",
@@ -349,7 +349,7 @@
       "Transaction": 590742
     }
   },
-  "generated_at": "2026-09-24T23:09:49.502949Z",
+  "generated_at": "2026-09-24T23:22:53.533453Z",
   "graph": "FraudGraph",
   "mode": "verify-only",
   "observed": {
@@ -385,7 +385,7 @@
     "TigerGraph count endpoints may be eventually consistent for edge types.",
     "A non-empty AgentCase type and optional vector indexes are managed components, not static bulk counts."
   ],
-  "run_id": "ecbbfec2-189e-471f-999d-d62c378c6311",
+  "run_id": "fea025cd-6309-4f45-96dc-0b34eb1edb2b",
   "source": {
     "errors": [],
     "expected_files": 19,
