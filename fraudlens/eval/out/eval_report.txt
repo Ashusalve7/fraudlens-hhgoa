@@ -1,0 +1,22 @@
+train rows: 4173, holdout rows: 1392
+holdout AUC: 0.9752  Brier: 0.0397
+base rate train: 0.819  holdout: 0.896
+coefficients (standardized): {"amt_ratio_30d": -0.113, "device_shared_cards_7d": -0.231, "flagged_amount": -0.778, "flagged_online": -0.519, "flagged_risk": -5.508, "home_active_72h": -0.271, "m1_not_T": 0.0, "n_small_auth_1h": 0.094, "n_txn_24h": 0.039, "new_dev_share_24h": -1.068, "online_share_shift": -0.246, "pemail_changed": 0.085, "product_new": 0.011, "proxy_share_24h": -0.149, "region_new": -0.499, "region_new_n_72h": 0.059}
+calibration (holdout): p~0.28:y=0.32(n=174) | p~0.86:y=0.84(n=174) | p~0.99:y=1.00(n=174) | p~1.00:y=1.00(n=174) | p~1.00:y=1.00(n=174) | p~1.00:y=1.00(n=174) | p~1.00:y=1.00(n=174) | p~1.00:y=1.00(n=174)
+
+pattern rule accuracy on 4665 confirmed-fraud cases: 0.3376
+confusion (rows=truth, cols=pred):
+pred_pattern                 account_takeover  card_not_present_fraud  card_not_present_new_device  card_testing  out_of_region_use  undocumented
+pattern                                                                                                                                          
+account_takeover                           36                      87                            1             0                 17          1064
+card_not_present_fraud                      0                     904                          116             0                  0           384
+card_not_present_new_device                 0                     574                          496             1                  0             5
+card_testing                                0                      16                            0             0                  0             0
+out_of_region_use                          34                       0                            0             0                139           782
+undocumented                                0                       3                            6             0                  0             0
+
+SAR filed rate among confirmed fraud: 0.085
+  exposure>1000: n=393, sar_rate=1.000
+  shared device: n=2356, sar_rate=0.048
+  undocumented: n=9, sar_rate=1.000
+  (exposure>1000 OR shared device): n=2639, sar_rate=0.150

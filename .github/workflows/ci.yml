@@ -1,0 +1,50 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: fraudlens/dashboard/package-lock.json
+
+      - name: Install locked Python dependencies
+        run: uv sync --project fraudlens --all-groups --frozen
+
+      - name: Scan committed files for secrets
+        run: uv run --project fraudlens python scripts/secret_scan.py
+
+      - name: Lint Python
+        run: uv run --project fraudlens ruff check fraudlens scripts
+
+      - name: Run Python tests
+        run: uv run --project fraudlens pytest fraudlens/tests --cov=fraudlens --cov-report=term-missing --cov-fail-under=70
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix fraudlens/dashboard
+
+      - name: Build frontend
+        run: npm run build --prefix fraudlens/dashboard
+
+      - name: Audit frontend dependencies
+        run: npm audit --prefix fraudlens/dashboard --audit-level=high

@@ -1,0 +1,99 @@
+{
+  "case_id": "HHG-008",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.1,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Disputed amount matches the cardholder's recurring pattern (same amount and product, recurring for over a month)",
+        "source": "graph",
+        "ref": "query:get_customer_history",
+        "entity_ids": [
+          "C13171-K2"
+        ]
+      },
+      {
+        "claim": "Customer recognized the charge as their own recurring payment after verification",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [],
+    "summary": "Alert HHG-008: customer reported an unrecognized $55.68 online purchase. The charge matches the cardholder's recurring pattern (same amount and product on the card's history for over a month). After verification the customer recognized the payment. Closed as legitimate under R7.",
+    "written_to_graph": true,
+    "graph_case_id": "AG-HHG-008"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 35,
+      "assumed_response": "Customer recognizes the charge as their own recurring payment of $55.68 (same amount and product appear 8 times in the card's history)."
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R7: disputed charge matching the cardholder's recurring pattern"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R7: confirm the recurring charge with the customer"
+      },
+      {
+        "action": "WARN_CUSTOMER",
+        "route": "auto",
+        "reason": "R7: informational reminder about the recurring payment"
+      }
+    ],
+    "final": [
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3/R7: customer confirmed the recurring charge"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R7: internal record of the dispute resolution"
+      }
+    ],
+    "what_changed": "Verification with the customer settled the dispute: the charge was their own recurring payment (R7)."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a: disputed-but-legitimate recurring charge (R7); no fraud confirmed",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Verification settled the question (policy 6).",
+  "tool_calls": 36,
+  "tokens": 0,
+  "latency_s": 2.87,
+  "_states": [
+    "TRIGGERED",
+    "CONTEXT_RETRIEVED",
+    "EVIDENCE_GATHERED",
+    "PATTERNS_ASSESSED",
+    "MEMORY_RETRIEVED",
+    "NBA_INITIAL",
+    "EVIDENCE_REQUESTED",
+    "EVIDENCE_RECEIVED",
+    "NBA_FINAL",
+    "CASE_WRITTEN",
+    "ANSWER_EXPORTED"
+  ]
+}

@@ -1,0 +1,30 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+.env
+.env.*
+!.env.example
+
+# Generated graph load products. Small manifests are intentionally tracked.
+pipeline/out/*
+!pipeline/out/card_map.parquet
+!pipeline/out/txn_card_map.parquet
+!pipeline/out/card_rule_report.json
+!pipeline/out/load_log.json
+!pipeline/out/graph_counts.json
+!pipeline/out/graph_health.json
+
+# Keep the small trained model and reports; rebuild the larger feature table.
+eval/out/*
+!eval/out/model.json
+!eval/out/eval_report.txt
+!eval/out/metrics.json
+
+dashboard/node_modules/
+dashboard/.vite/
+*.log

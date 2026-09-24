@@ -1,0 +1,29 @@
+# Local credentials and editor state
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.log
+
+# Large sponsor data and generated load products
+HHGOA_IEEE/
+fraudlens/pipeline/out/load/
+fraudlens/pipeline/out/*.parquet
+fraudlens/eval/out/case_features.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Frontend
+node_modules/
+.vite/
+
+# OS/editor
+.DS_Store
+Thumbs.db

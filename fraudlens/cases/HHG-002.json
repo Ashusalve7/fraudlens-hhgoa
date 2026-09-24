@@ -1,0 +1,123 @@
+{
+  "case_id": "HHG-002",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.9,
+    "pattern": "card_not_present_fraud",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3478782"
+    ],
+    "first_suspicious_txn_id": "3478782",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 292.36,
+    "evidence": [
+      {
+        "claim": "Flagged transaction 3478782: $292.36 online (C) with model risk score 0.79 - a reason to look, not a verdict.",
+        "source": "graph",
+        "ref": "query:get_transaction_context",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "Card window shows 1 transactions within +-24h of the trigger (sum $292.36); card's 30-day baseline mean ratio 6.31.",
+        "source": "graph",
+        "ref": "query:get_card_window",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-2517, CC-1708, CC-1400).",
+        "source": "graph",
+        "ref": "query:find_similar_cases",
+        "entity_ids": [
+          "CC-2517",
+          "CC-1708",
+          "CC-1400"
+        ]
+      },
+      {
+        "claim": "Customer states they did not make this online transaction of $292.36; card still in possession (assumption based on nearest similar closed cases: CC-2517, CC-1708, CC-1400).",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-2517",
+      "CC-1708",
+      "CC-1400"
+    ],
+    "summary": "Alert HHG-002: the model scored it 0.79 on transaction 3478782 ($292.36, online). Investigation supports card not present fraud: 1 transaction(s) in the episode, exposure $292.36. The customer denied the transaction when asked. Probability 0.90.",
+    "written_to_graph": true,
+    "graph_case_id": "AG-HHG-002"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 7,
+      "assumed_response": "Customer states they did not make this online transaction of $292.36; card still in possession (assumption based on nearest similar closed cases: CC-2517, CC-1708, CC-1400)."
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: probability 0.66 below 0.70 on current signals - verify before blocking"
+      },
+      {
+        "action": "STEP_UP_AUTH",
+        "route": "auto",
+        "reason": "R1: step-up authentication as the low-impact alternative"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: case opened (probability >= 0.30 or evidence requested)"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied the transaction"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: open internal case with the evidence attached"
+      }
+    ],
+    "what_changed": "Customer denial raised probability from 0.66 to 0.90; recommendation moved from verify to block/case/report per R2."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a: case only - exposure under $1,000, no shared or undocumented link (most cases never need a report)",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "A verification response settled the question (policy 6).",
+  "tool_calls": 8,
+  "tokens": 0,
+  "latency_s": 3.43,
+  "_states": [
+    "TRIGGERED",
+    "CONTEXT_RETRIEVED",
+    "EVIDENCE_GATHERED",
+    "PATTERNS_ASSESSED",
+    "MEMORY_RETRIEVED",
+    "NBA_INITIAL",
+    "EVIDENCE_REQUESTED",
+    "EVIDENCE_RECEIVED",
+    "NBA_FINAL",
+    "CASE_WRITTEN",
+    "ANSWER_EXPORTED"
+  ]
+}

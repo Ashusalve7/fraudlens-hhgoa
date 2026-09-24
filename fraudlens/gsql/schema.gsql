@@ -1,0 +1,125 @@
+-- FraudLens schema for HHGOA sponsor task (TigerGraph 4.2)
+-- Global vertex/edge types, then the FraudGraph.
+
+CREATE VERTEX Transaction (
+  PRIMARY_ID txn_id STRING,
+  ts DATETIME,
+  amount FLOAT,
+  product_cd STRING,
+  channel STRING,
+  risk_score FLOAT,
+  card1 STRING,
+  card2 STRING,
+  card3 STRING,
+  card5 STRING,
+  addr1 STRING,
+  addr2 STRING,
+  dist1 FLOAT,
+  dist2 FLOAT,
+  p_email STRING,
+  r_email STRING,
+  m_flags STRING,
+  c_counts STRING,
+  d_deltas STRING,
+  id_15 STRING,
+  id_23 STRING,
+  device_type STRING
+) WITH primary_id_as_attribute="true"
+
+CREATE VERTEX Customer (
+  PRIMARY_ID customer_id STRING,
+  first_ts DATETIME,
+  last_ts DATETIME,
+  n_txn UINT,
+  n_cards UINT
+) WITH primary_id_as_attribute="true"
+
+CREATE VERTEX Card (
+  PRIMARY_ID card_id STRING,
+  network STRING,
+  card_type STRING,
+  first_ts DATETIME,
+  last_ts DATETIME,
+  n_txn UINT
+) WITH primary_id_as_attribute="true"
+
+CREATE VERTEX DeviceProfile (
+  PRIMARY_ID device_id STRING,
+  device_info STRING,
+  os STRING,
+  browser STRING,
+  screen STRING,
+  device_type STRING,
+  n_txn UINT,
+  n_cards UINT,
+  n_fraud_cases UINT
+) WITH primary_id_as_attribute="true"
+
+CREATE VERTEX EmailDomain (
+  PRIMARY_ID domain STRING,
+  is_free BOOL
+) WITH primary_id_as_attribute="true"
+
+CREATE VERTEX BillingRegion (
+  PRIMARY_ID region_id STRING
+) WITH primary_id_as_attribute="true"
+
+CREATE VERTEX ClosedCase (
+  PRIMARY_ID case_id STRING,
+  customer_id STRING,
+  card_id STRING,
+  outcome STRING,
+  pattern STRING,
+  opened_at DATETIME,
+  closed_at DATETIME,
+  n_txns UINT,
+  exposure_usd FLOAT,
+  report_filed BOOL,
+  actions STRING,
+  notes STRING
+) WITH primary_id_as_attribute="true"
+
+CREATE VERTEX AgentCase (
+  PRIMARY_ID case_id STRING,
+  verdict STRING,
+  pattern STRING,
+  pattern_description STRING,
+  fraud_probability DOUBLE,
+  exposure_usd DOUBLE,
+  status STRING,
+  opened_at DATETIME,
+  stop_reason STRING,
+  summary STRING,
+  answer_json STRING
+) WITH primary_id_as_attribute="true"
+
+CREATE VERTEX PolicyChunk (
+  PRIMARY_ID chunk_id STRING,
+  kind STRING,
+  title STRING,
+  text STRING
+) WITH primary_id_as_attribute="true"
+
+CREATE DIRECTED EDGE OWNS_CARD (FROM Customer, TO Card, first_seen DATETIME) WITH REVERSE_EDGE="rev_OWNS_CARD"
+CREATE DIRECTED EDGE PAID_WITH (FROM Transaction, TO Card) WITH REVERSE_EDGE="rev_PAID_WITH"
+CREATE DIRECTED EDGE FROM_DEVICE (FROM Transaction, TO DeviceProfile) WITH REVERSE_EDGE="rev_FROM_DEVICE"
+CREATE DIRECTED EDGE P_EMAIL (FROM Transaction, TO EmailDomain) WITH REVERSE_EDGE="rev_P_EMAIL"
+CREATE DIRECTED EDGE R_EMAIL (FROM Transaction, TO EmailDomain) WITH REVERSE_EDGE="rev_R_EMAIL"
+CREATE DIRECTED EDGE BILLED_IN (FROM Transaction, TO BillingRegion) WITH REVERSE_EDGE="rev_BILLED_IN"
+CREATE DIRECTED EDGE NEXT_TXN (FROM Transaction, TO Transaction, gap_seconds UINT)
+CREATE DIRECTED EDGE CASE_TXN (FROM ClosedCase, TO Transaction)
+CREATE DIRECTED EDGE CASE_CARD (FROM ClosedCase, TO Card)
+CREATE DIRECTED EDGE CASE_CONN_CARD (FROM ClosedCase, TO Card)
+CREATE DIRECTED EDGE CASE_DEVICE (FROM ClosedCase, TO DeviceProfile)
+CREATE DIRECTED EDGE AG_TXN (FROM AgentCase, TO Transaction)
+CREATE DIRECTED EDGE AG_CARD (FROM AgentCase, TO Card)
+CREATE DIRECTED EDGE AG_DEVICE (FROM AgentCase, TO DeviceProfile)
+CREATE DIRECTED EDGE AG_SIMILAR (FROM AgentCase, TO ClosedCase, score FLOAT)
+
+CREATE GLOBAL SCHEMA_CHANGE JOB add_vectors {
+  ALTER VERTEX ClosedCase ADD VECTOR ATTRIBUTE notes_embedding(DIMENSION=384, METRIC="COSINE")
+  ALTER VERTEX PolicyChunk ADD VECTOR ATTRIBUTE embedding(DIMENSION=384, METRIC="COSINE")
+}
+RUN GLOBAL SCHEMA_CHANGE JOB add_vectors
+
+CREATE GRAPH FraudGraph(*)

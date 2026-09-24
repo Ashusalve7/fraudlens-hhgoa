@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fraudlens.local/schemas/answer.schema.json",
+  "title": "FraudLens benchmark answer",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id",
+    "case",
+    "evidence_requests",
+    "next_best_actions",
+    "sar",
+    "stop_reason",
+    "tool_calls",
+    "tokens",
+    "latency_s"
+  ],
+  "properties": {
+    "case_id": { "type": "string", "pattern": "^HHG-\\d{3}$" },
+    "case": { "$ref": "#/$defs/case" },
+    "evidence_requests": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidenceRequest" }
+    },
+    "next_best_actions": { "$ref": "#/$defs/nextBestActions" },
+    "sar": { "$ref": "#/$defs/sar" },
+    "stop_reason": { "type": "string", "minLength": 1 },
+    "tool_calls": { "type": "integer", "minimum": 0 },
+    "tokens": { "type": "integer", "minimum": 0 },
+    "latency_s": { "type": "number", "minimum": 0 }
+  },
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "verdict",
+        "fraud_probability",
+        "pattern",
+        "pattern_description",
+        "affected_txn_ids",
+        "first_suspicious_txn_id",
+        "connected_card_ids",
+        "connected_device_profiles",
+        "exposure_usd",
+        "evidence",
+        "similar_prior_cases",
+        "summary",
+        "written_to_graph",
+        "graph_case_id"
+      ],
+      "properties": {
+        "status": { "enum": ["open", "closed_fraud", "closed_legitimate", "escalated"] },
+        "verdict": { "enum": ["fraud", "legitimate", "uncertain"] },
+        "fraud_probability": { "type": "number", "minimum": 0, "maximum": 1 },
+        "pattern": {
+          "enum": [
+            "card_testing",
+            "card_not_present_fraud",
+            "card_not_present_new_device",
+            "out_of_region_use",
+            "account_takeover",
+            "undocumented",
+            "none"
+          ]
+        },
+        "pattern_description": { "type": "string" },
+        "affected_txn_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "first_suspicious_txn_id": { "type": "string" },
+        "connected_card_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "connected_device_profiles": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "exposure_usd": { "type": "number", "minimum": 0 },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "similar_prior_cases": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^CC-\\d+$" },
+          "uniqueItems": true
+        },
+        "summary": { "type": "string", "minLength": 1 },
+        "written_to_graph": { "type": "boolean" },
+        "graph_case_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "source", "ref", "entity_ids"],
+      "properties": {
+        "claim": { "type": "string", "minLength": 1 },
+        "source": { "enum": ["graph", "document", "customer", "external"] },
+        "ref": { "type": "string", "minLength": 1 },
+        "entity_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "evidenceRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "asked_after_step", "assumed_response"],
+      "properties": {
+        "type": { "enum": ["customer_validation", "step_up_auth", "analyst_info"] },
+        "asked_after_step": { "type": "integer", "minimum": 0 },
+        "assumed_response": { "type": "string", "minLength": 1 }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "route", "reason"],
+      "properties": {
+        "action": {
+          "enum": [
+            "ALLOW_TRANSACTION",
+            "DECLINE_TRANSACTION",
+            "MONITOR_CARD",
+            "MONITOR_CONNECTED_CARDS",
+            "WARN_CUSTOMER",
+            "VERIFY_WITH_CUSTOMER",
+            "STEP_UP_AUTH",
+            "BLOCK_CARD",
+            "BLOCK_ALL_CARDS",
+            "GENERATE_REPORT",
+            "CREATE_CASE",
+            "FILE_REPORT",
+            "ESCALATE_TO_ANALYST",
+            "CLOSE_NO_FRAUD"
+          ]
+        },
+        "route": { "enum": ["auto", "L1", "L2"] },
+        "reason": { "type": "string", "pattern": "^(?:R(?:10|[1-9])|3a|policy)\\b" }
+      }
+    },
+    "nextBestActions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["initial", "final", "what_changed"],
+      "properties": {
+        "initial": { "type": "array", "items": { "$ref": "#/$defs/action" } },
+        "final": { "type": "array", "items": { "$ref": "#/$defs/action" } },
+        "what_changed": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "reason", "narrative", "subjects", "total_amount_usd", "activity_dates"],
+      "properties": {
+        "file": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1 },
+        "narrative": { "type": "string" },
+        "subjects": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "total_amount_usd": { "type": "number", "minimum": 0 },
+        "activity_dates": {
+          "type": "array",
+          "items": { "type": "string", "format": "date" },
+          "minItems": 0,
+          "maxItems": 2
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,165 @@
+{
+  "case_id": "HHG-004",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.9965,
+    "pattern": "card_not_present_new_device",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3580804",
+      "3583227",
+      "3583499",
+      "3583503",
+      "3584017",
+      "3585446",
+      "3585726",
+      "3587858"
+    ],
+    "first_suspicious_txn_id": "3580804",
+    "connected_card_ids": [
+      "C02222-K1",
+      "C03095-K2",
+      "C04248-K2",
+      "C05031-K2",
+      "C07518-K2"
+    ],
+    "connected_device_profiles": [
+      "DP-1c36726b0140"
+    ],
+    "exposure_usd": 384.43,
+    "evidence": [
+      {
+        "claim": "Flagged transaction 3583227: $128.33 online (C) with model risk score 0.34 - a reason to look, not a verdict.",
+        "source": "graph",
+        "ref": "query:get_transaction_context",
+        "entity_ids": [
+          "3583227"
+        ]
+      },
+      {
+        "claim": "Card window shows 8 transactions within +-24h of the trigger (sum $384.43); card's 30-day baseline mean ratio 4.01.",
+        "source": "graph",
+        "ref": "query:get_card_window",
+        "entity_ids": [
+          "3580804",
+          "3583227",
+          "3583499",
+          "3583503",
+          "3584017",
+          "3585446",
+          "3585726",
+          "3587858"
+        ]
+      },
+      {
+        "claim": "Device profile 3583227 links 6 cards including cards outside this customer's ownership.",
+        "source": "graph",
+        "ref": "query:get_device_neighborhood",
+        "entity_ids": [
+          "C08106-K1",
+          "C05031-K2",
+          "C04248-K2",
+          "C02222-K1",
+          "C07518-K2",
+          "C03095-K2"
+        ]
+      },
+      {
+        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-0245, CC-4232, CC-3990).",
+        "source": "graph",
+        "ref": "query:find_similar_cases",
+        "entity_ids": [
+          "CC-0245",
+          "CC-4232",
+          "CC-3990"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-0245",
+      "CC-4232",
+      "CC-3990"
+    ],
+    "summary": "Alert HHG-004: the customer reported an unrecognized purchase on transaction 3583227 ($128.33, online). Investigation supports card not present new device: 8 transaction(s) in the episode, exposure $384.43. The customer denied the transaction when asked. Device profile evidence connects this card to other cards. Probability 1.00.",
+    "written_to_graph": true,
+    "graph_case_id": "AG-HHG-004"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R1/R2: fraud probability 1.00 supported by independent graph evidence"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: open internal case with evidence attached"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a: exposure > $1,000 or shared/undocumented link"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: shared origin across cards"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied the transaction"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: open internal case with the evidence attached"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R2: exposure exceeds $1,000 or case connects to a shared element/other card's fraud"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: connected cards share the compromise element"
+      }
+    ],
+    "what_changed": "Customer denial raised probability from 1.00 to 1.00; recommendation moved from verify to block/case/report per R2."
+  },
+  "sar": {
+    "file": true,
+    "reason": "3a/R2/R6/R9: activity connects to a shared element or another card's fraud",
+    "narrative": "On 2016-12-29, card C08106-K1 belonging to customer C08106 was used for 8 transaction(s) totaling $384.43, beginning with transaction 3580804 ($128.33, online channel). The activity is inconsistent with the cardholder's established pattern and is classified as card not present new device. Graph analysis linked the involved device profile and payment card to related activity on other cards within the same window, indicating a common origin across accounts. The cardholder was asked to validate the activity; the recorded response supported unauthorized use. Based on the exposure exceeding $1,000 and the connection to other compromised cards, the bank files this report on the described activity. Affected transactions: 3580804, 3583227, 3583499, 3583503, 3584017, 3585446, 3585726, 3587858.",
+    "subjects": [
+      "C08106",
+      "C08106-K1"
+    ],
+    "total_amount_usd": 384.43,
+    "activity_dates": [
+      "2016-12-29",
+      "2016-12-29"
+    ]
+  },
+  "stop_reason": "A verification response settled the question (policy 6).",
+  "tool_calls": 17,
+  "tokens": 0,
+  "latency_s": 4.09,
+  "_states": [
+    "TRIGGERED",
+    "CONTEXT_RETRIEVED",
+    "EVIDENCE_GATHERED",
+    "PATTERNS_ASSESSED",
+    "MEMORY_RETRIEVED",
+    "NBA_INITIAL",
+    "NBA_FINAL",
+    "CASE_WRITTEN",
+    "ANSWER_EXPORTED"
+  ]
+}

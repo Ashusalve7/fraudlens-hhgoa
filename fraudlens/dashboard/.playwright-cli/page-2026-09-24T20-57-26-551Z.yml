@@ -1,0 +1,56 @@
+- generic [ref=f1e2]:
+  - link "Skip to Main Content" [ref=f1e3] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=f1e4]:
+    - complementary "FraudLens sidebar" [ref=f1e5]:
+      - link "FraudLens Fraud operations" [ref=f1e6] [cursor=pointer]:
+        - /url: /cases
+        - generic [aria-hidden] [ref=f1e7]: FL
+        - generic [ref=f1e8]:
+          - strong [ref=f1e9]: FraudLens
+          - generic [ref=f1e10]: Fraud operations
+      - navigation "Primary workspace" [ref=f1e11]:
+        - paragraph [ref=f1e12]: Workspace
+        - link "Investigations —" [ref=f1e13] [cursor=pointer]:
+          - /url: /cases
+          - text: Investigations
+          - generic [ref=f1e15]: —
+        - link "Case-Pack Analytics" [ref=f1e16] [cursor=pointer]:
+          - /url: /analytics
+      - region [ref=f1e18]:
+        - heading "Data Status" [level=2] [ref=f1e20]
+        - paragraph [ref=f1e22]: Loading case records…
+        - generic [ref=f1e23]:
+          - generic [ref=f1e24]:
+            - term [ref=f1e25]: Graph source
+            - definition [ref=f1e26]: Loading snapshot…
+          - generic [ref=f1e27]:
+            - term [ref=f1e28]: Transactions
+            - definition [ref=f1e29]: Unavailable
+          - generic [ref=f1e30]:
+            - term [ref=f1e31]: Agent cases
+            - definition [ref=f1e32]: Unavailable
+      - paragraph [ref=f1e33]: Read-only decision support. Recommended actions are not executed here.
+    - generic [ref=f1e34]:
+      - paragraph [ref=f1e35]: Case investigation loaded
+      - main [active] [ref=f1e36]:
+        - generic [ref=f1e37]:
+          - link "← Case Queue" [ref=f1e38] [cursor=pointer]:
+            - /url: /cases
+          - navigation "Case pagination" [ref=f1e39]:
+            - generic:
+              - generic [aria-hidden]: ←
+              - generic:
+                - generic: Previous
+                - strong: None
+            - generic:
+              - generic:
+                - generic: Next
+                - strong: None
+              - generic [aria-hidden]: →
+        - region [ref=f1e40]:
+          - heading "Loading case HHG-014" [level=1] [ref=f1e41]
+          - status [ref=f1e42]:
+            - generic [ref=f1e44]:
+              - strong [ref=f1e45]: Loading HHG-014…
+              - paragraph [ref=f1e46]: Reading the recorded investigation, action snapshots, and evidence claims.

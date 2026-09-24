@@ -1,0 +1,16 @@
+{
+  "rule": "card_id = customer_id + '-K' + rank of (card1,card4,card6) in customer's sorted identities",
+  "validation_flagged": {
+    "hits": 4665,
+    "total": 4665,
+    "acc": 1.0
+  },
+  "validation_all_txns": {
+    "hits": 14955,
+    "total": 14955,
+    "acc": 1.0,
+    "bad_cases": 0
+  },
+  "n_cards": 14318,
+  "n_customers": 13553
+}

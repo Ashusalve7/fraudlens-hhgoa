@@ -1,0 +1,46 @@
+- generic [ref=e2]:
+  - link "Skip to Main Content" [ref=e3] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e4]:
+    - complementary "FraudLens sidebar" [ref=e5]:
+      - link "FraudLens Fraud operations" [ref=e6] [cursor=pointer]:
+        - /url: /cases
+        - generic [aria-hidden] [ref=e7]: FL
+        - generic [ref=e8]:
+          - strong [ref=e9]: FraudLens
+          - generic [ref=e10]: Fraud operations
+      - navigation "Primary workspace" [ref=e11]:
+        - paragraph [ref=e12]: Workspace
+        - link "Investigations —" [ref=e13] [cursor=pointer]:
+          - /url: /cases
+          - text: Investigations
+          - generic [ref=e15]: —
+        - link "Case-Pack Analytics" [ref=e16] [cursor=pointer]:
+          - /url: /analytics
+      - region [ref=e18]:
+        - heading "Data Status" [level=2] [ref=e20]
+        - paragraph [ref=e22]: Loading case records…
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - term [ref=e25]: Graph source
+            - definition [ref=e26]: Loading snapshot…
+          - generic [ref=e27]:
+            - term [ref=e28]: Transactions
+            - definition [ref=e29]: Unavailable
+          - generic [ref=e30]:
+            - term [ref=e31]: Agent cases
+            - definition [ref=e32]: Unavailable
+      - paragraph [ref=e33]: Read-only decision support. Recommended actions are not executed here.
+    - generic [ref=e34]:
+      - paragraph [ref=e35]: Investigation queue loaded
+      - main [active] [ref=e36]:
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - paragraph [ref=e39]: Analyst Workspace
+            - heading "Case-Pack Review" [level=1] [ref=e40]
+            - paragraph [ref=e41]: Triage recorded HHGOA investigations with model likelihood, supporting claims, and human approval boundaries kept distinct.
+          - status [ref=e42]: Loading case records…
+        - status [ref=e43]:
+          - generic [ref=e45]:
+            - strong [ref=e46]: Loading the investigation queue…
+            - paragraph [ref=e47]: Case summaries will appear here when the API responds.

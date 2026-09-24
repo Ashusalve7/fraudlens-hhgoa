@@ -1,0 +1,134 @@
+{
+  "case_id": "HHG-009",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.99,
+    "pattern": "card_not_present_fraud",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3581141"
+    ],
+    "first_suspicious_txn_id": "3581141",
+    "connected_card_ids": [
+      "C00073-K2",
+      "C00076-K1",
+      "C00094-K3",
+      "C00105-K1",
+      "C00132-K1",
+      "C00150-K1",
+      "C00157-K1",
+      "C00180-K1",
+      "C00192-K1",
+      "C00197-K1"
+    ],
+    "connected_device_profiles": [
+      "DP-2edf29581665"
+    ],
+    "exposure_usd": 30.02,
+    "evidence": [
+      {
+        "claim": "Flagged transaction 3581141: $30.02 online (S) with model risk score 0.28 - a reason to look, not a verdict.",
+        "source": "graph",
+        "ref": "query:get_transaction_context",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "Card window shows 1 transactions within +-24h of the trigger (sum $30.02); card's 30-day baseline mean ratio 0.53.",
+        "source": "graph",
+        "ref": "query:get_card_window",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "Device profile 3561882 links 1013 cards including cards outside this customer's ownership.",
+        "source": "graph",
+        "ref": "query:get_device_neighborhood",
+        "entity_ids": [
+          "C13155-K1",
+          "C00849-K1",
+          "C08427-K1",
+          "C00237-K1",
+          "C04882-K1",
+          "C05654-K1",
+          "C12076-K1",
+          "C00854-K2",
+          "C07871-K1",
+          "C00386-K1"
+        ]
+      },
+      {
+        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-2517, CC-1708, CC-1400).",
+        "source": "graph",
+        "ref": "query:find_similar_cases",
+        "entity_ids": [
+          "CC-2517",
+          "CC-1708",
+          "CC-1400"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-2517",
+      "CC-1708",
+      "CC-1400"
+    ],
+    "summary": "Alert HHG-009: the customer reported an unrecognized purchase on transaction 3581141 ($30.02, online). Investigation supports card not present fraud: 1 transaction(s) in the episode, exposure $30.02. The customer denied the transaction when asked. Device profile evidence connects this card to other cards. Probability 0.99.",
+    "written_to_graph": true,
+    "graph_case_id": "AG-HHG-009"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R1/R2: fraud probability 0.99 supported by independent graph evidence"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: open internal case with evidence attached"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied the transaction"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: open internal case with the evidence attached"
+      }
+    ],
+    "what_changed": "Customer denial raised probability from 0.99 to 0.99; recommendation moved from verify to block/case/report per R2."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a: case only - exposure under $1,000, no shared or undocumented link (most cases never need a report)",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "A verification response settled the question (policy 6).",
+  "tool_calls": 41,
+  "tokens": 0,
+  "latency_s": 4.48,
+  "_states": [
+    "TRIGGERED",
+    "CONTEXT_RETRIEVED",
+    "EVIDENCE_GATHERED",
+    "PATTERNS_ASSESSED",
+    "MEMORY_RETRIEVED",
+    "NBA_INITIAL",
+    "NBA_FINAL",
+    "CASE_WRITTEN",
+    "ANSWER_EXPORTED"
+  ]
+}

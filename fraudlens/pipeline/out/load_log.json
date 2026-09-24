@@ -1,0 +1,72 @@
+{
+  "v_Customer": {
+    "rows": 13553,
+    "seconds": 11.7,
+    "done": true
+  },
+  "v_Card": {
+    "rows": 14318,
+    "seconds": 16.5,
+    "done": true
+  },
+  "v_EmailDomain": {
+    "rows": 60,
+    "seconds": 4.4,
+    "done": true
+  },
+  "v_BillingRegion": {
+    "rows": 332,
+    "seconds": 5.4,
+    "done": true
+  },
+  "v_DeviceProfile": {
+    "rows": 9706,
+    "seconds": 7.4,
+    "done": true
+  },
+  "v_ClosedCase": {
+    "rows": 5565,
+    "seconds": 14.6,
+    "done": true
+  },
+  "v_Transaction": {
+    "rows": 590742,
+    "seconds": 432.2,
+    "done": true
+  },
+  "e_OWNS_CARD": {
+    "rows": 14318,
+    "seconds": 2.5,
+    "done": true
+  },
+  "e_PAID_WITH": {
+    "rows": 590742,
+    "seconds": 130.3,
+    "done": true
+  },
+  "e_FROM_DEVICE": {
+    "rows": 144432,
+    "seconds": 30.6,
+    "done": true
+  },
+  "e_P_EMAIL": {
+    "rows": 496262,
+    "seconds": 107.0,
+    "done": true
+  },
+  "e_R_EMAIL": {
+    "rows": 137453,
+    "seconds": 31.3,
+    "done": true
+  },
+  "e_BILLED_IN": {
+    "rows": 525003,
+    "seconds": 98.1,
+    "done": true
+  },
+  "e_NEXT_TXN": {
+    "rows": 576424,
+    "error": "('Processing attribute gap_seconds failed, value cannot be converted to UINT64', 'REST-30200')",
+    "done": false
+  }
+}

@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /fraudlens
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /fraudlens/dashboard
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

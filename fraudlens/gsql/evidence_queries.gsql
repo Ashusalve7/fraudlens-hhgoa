@@ -1,0 +1,175 @@
+-- FraudLens evidence queries (TigerGraph 4.2, SYNTAX v3 / GQL path patterns)
+-- Missing strings are stored as "_NA_". Params prefixed in_.
+
+CREATE QUERY get_transaction_context(STRING in_txn_id) FOR GRAPH FraudGraph SYNTAX v3 {
+  S = SELECT s FROM (s:Transaction {txn_id: in_txn_id});
+  Cards = SELECT c FROM (s:Transaction {txn_id: in_txn_id}) -[e:PAID_WITH]-> (c:Card);
+  Custs = SELECT cu FROM (s:Transaction {txn_id: in_txn_id}) -[e:PAID_WITH]-> (c:Card) <-[oe:OWNS_CARD]- (cu:Customer);
+  Devices = SELECT d FROM (s:Transaction {txn_id: in_txn_id}) -[e2:FROM_DEVICE]-> (d:DeviceProfile);
+  PRINT S[S.txn_id, S.ts, S.amount, S.product_cd, S.channel, S.risk_score, S.card1,
+          S.addr1, S.addr2, S.p_email, S.r_email, S.m_flags, S.id_15, S.id_23, S.device_type];
+  PRINT Cards[Cards.card_id, Cards.network, Cards.card_type];
+  PRINT Custs[Custs.customer_id];
+  PRINT Devices[Devices.device_id, Devices.device_info, Devices.os, Devices.browser,
+                Devices.screen, Devices.n_cards, Devices.n_txn];
+}
+
+CREATE QUERY get_card_window(STRING in_card_id, DATETIME in_start, DATETIME in_end) FOR GRAPH FraudGraph SYNTAX v3 {
+  T = SELECT t FROM (c:Card {card_id: in_card_id}) <-[pe:PAID_WITH]- (t:Transaction)
+      WHERE t.ts >= in_start AND t.ts <= in_end
+      ORDER BY t.ts ASC;
+  PRINT T[T.txn_id, T.ts, T.amount, T.product_cd, T.channel, T.risk_score, T.id_15, T.addr1, T.p_email];
+}
+
+CREATE QUERY get_customer_history(STRING in_customer_id, DATETIME in_start, DATETIME in_end) FOR GRAPH FraudGraph SYNTAX v3 {
+  Cards = SELECT k FROM (c:Customer {customer_id: in_customer_id}) -[oc:OWNS_CARD]-> (k:Card);
+  T2 = SELECT t FROM (c:Customer {customer_id: in_customer_id}) -[oc:OWNS_CARD]-> (k:Card) <-[pe:PAID_WITH]- (t:Transaction)
+      WHERE t.ts >= in_start AND t.ts <= in_end
+      ORDER BY t.ts ASC;
+  PRINT Cards[Cards.card_id];
+  PRINT T2[T2.txn_id, T2.ts, T2.amount, T2.product_cd, T2.channel, T2.risk_score, T2.addr1];
+}
+
+CREATE QUERY get_device_neighborhood(STRING in_device_id, DATETIME in_start, DATETIME in_end) FOR GRAPH FraudGraph SYNTAX v3 {
+  T = SELECT t FROM (d:DeviceProfile {device_id: in_device_id}) <-[fe:FROM_DEVICE]- (t:Transaction)
+      WHERE t.ts >= in_start AND t.ts <= in_end
+      ORDER BY t.ts ASC;
+  Cards = SELECT k FROM (d:DeviceProfile {device_id: in_device_id}) <-[fe:FROM_DEVICE]- (t:Transaction) -[pw:PAID_WITH]-> (k:Card);
+  Custs = SELECT cu FROM (d:DeviceProfile {device_id: in_device_id}) <-[fe:FROM_DEVICE]- (t:Transaction) -[pw:PAID_WITH]-> (k:Card) <-[oe:OWNS_CARD]- (cu:Customer);
+  Cases = SELECT cc FROM (d:DeviceProfile {device_id: in_device_id}) <-[ce:CASE_DEVICE]- (cc:ClosedCase);
+  PRINT T[T.txn_id, T.ts, T.amount, T.risk_score, T.id_15, T.id_23];
+  PRINT Cards[Cards.card_id];
+  PRINT Custs[Custs.customer_id];
+  PRINT Cases[Cases.case_id, Cases.outcome, Cases.pattern, Cases.exposure_usd];
+}
+
+CREATE QUERY get_region_activity(STRING in_card_id, STRING in_region_id, DATETIME in_start, DATETIME in_end) FOR GRAPH FraudGraph SYNTAX v3 {
+  T = SELECT t FROM (c:Card {card_id: in_card_id}) <-[pe:PAID_WITH]- (t:Transaction)
+      WHERE t.addr1 == in_region_id AND t.ts >= in_start AND t.ts <= in_end
+      ORDER BY t.ts ASC;
+  PRINT T[T.txn_id, T.ts, T.amount, T.channel, T.product_cd, T.risk_score];
+}
+
+CREATE QUERY get_shared_entity_network(STRING in_txn_id) FOR GRAPH FraudGraph SYNTAX v3 {
+  Cards = SELECT c FROM (s:Transaction {txn_id: in_txn_id}) -[e:PAID_WITH]-> (c:Card);
+  Devices = SELECT d FROM (s:Transaction {txn_id: in_txn_id}) -[e2:FROM_DEVICE]-> (d:DeviceProfile);
+  Regions = SELECT r FROM (s:Transaction {txn_id: in_txn_id}) -[e3:BILLED_IN]-> (r:BillingRegion);
+  Emails = SELECT em FROM (s:Transaction {txn_id: in_txn_id}) -[e4:P_EMAIL]-> (em:EmailDomain);
+  T1 = SELECT t FROM (s:Transaction {txn_id: in_txn_id}) -[e2:FROM_DEVICE]-> (d:DeviceProfile) <-[fe:FROM_DEVICE]- (t:Transaction);
+  Cards2 = SELECT k FROM (s:Transaction {txn_id: in_txn_id}) -[e2:FROM_DEVICE]-> (d:DeviceProfile) <-[fe:FROM_DEVICE]- (t:Transaction) -[pw:PAID_WITH]-> (k:Card);
+  PRINT Cards[Cards.card_id, Cards.n_txn];
+  PRINT Devices[Devices.device_id, Devices.n_cards, Devices.n_txn];
+  PRINT Regions[Regions.region_id];
+  PRINT Emails[Emails.domain];
+  PRINT T1[T1.txn_id, T1.ts, T1.amount];
+  PRINT Cards2[Cards2.card_id];
+}
+
+-- Bounded investigation ring.  The MCP graph-ring tool returns these actual
+-- vertices and reconstructs only the paths represented by the result sets; it
+-- does not invent a community or a missing entity.
+CREATE QUERY get_graph_ring(STRING in_txn_id) FOR GRAPH FraudGraph SYNTAX v3 {
+  SeedTxns = SELECT t0 FROM (t0:Transaction {txn_id: in_txn_id});
+  Ring1Cards = SELECT k1 FROM (t0:Transaction {txn_id: in_txn_id}) -[pw1:PAID_WITH]-> (k1:Card);
+  Ring1Devices = SELECT d1 FROM (t0:Transaction {txn_id: in_txn_id}) -[fd1:FROM_DEVICE]-> (d1:DeviceProfile);
+  Ring1Customers = SELECT cu1 FROM (t0:Transaction {txn_id: in_txn_id}) -[pw1b:PAID_WITH]-> (k1b:Card) <-[oc1:OWNS_CARD]- (cu1:Customer);
+  Ring2TxnsByDevice = SELECT t2 FROM (t0:Transaction {txn_id: in_txn_id}) -[fd2:FROM_DEVICE]-> (d2:DeviceProfile) <-[fd2b:FROM_DEVICE]- (t2:Transaction);
+  Ring2CardsByDevice = SELECT k2 FROM (t0:Transaction {txn_id: in_txn_id}) -[fd3:FROM_DEVICE]-> (d3:DeviceProfile) <-[fd3b:FROM_DEVICE]- (t2b:Transaction) -[pw3:PAID_WITH]-> (k2:Card);
+  Ring2DevicesByCard = SELECT d3 FROM (t0:Transaction {txn_id: in_txn_id}) -[pw4:PAID_WITH]-> (k4:Card) <-[pw4b:PAID_WITH]- (t4:Transaction) -[fd4:FROM_DEVICE]-> (d3:DeviceProfile);
+  Ring2TxnsByCard = SELECT t5 FROM (t0:Transaction {txn_id: in_txn_id}) -[pw5:PAID_WITH]-> (k5:Card) <-[pw5b:PAID_WITH]- (t5:Transaction);
+  Ring2CustomersByCard = SELECT cu2 FROM (t0:Transaction {txn_id: in_txn_id}) -[pw6:PAID_WITH]-> (k6:Card) -[oc6:OWNS_CARD]-> (cu2:Customer);
+  CasesByCard = SELECT cc1 FROM (t0:Transaction {txn_id: in_txn_id}) -[pw7:PAID_WITH]-> (k7:Card) <-[ce1:CASE_CARD]- (cc1:ClosedCase);
+  CasesByDevice = SELECT cc2 FROM (t0:Transaction {txn_id: in_txn_id}) -[fd7:FROM_DEVICE]-> (d7:DeviceProfile) <-[ce2:CASE_DEVICE]- (cc2:ClosedCase);
+  PRINT SeedTxns[SeedTxns.txn_id, SeedTxns.ts, SeedTxns.amount, SeedTxns.card1, SeedTxns.addr1, SeedTxns.id_15, SeedTxns.id_23];
+  PRINT Ring1Cards[Ring1Cards.card_id, Ring1Cards.network, Ring1Cards.card_type, Ring1Cards.n_txn];
+  PRINT Ring1Devices[Ring1Devices.device_id, Ring1Devices.device_info, Ring1Devices.n_cards, Ring1Devices.n_txn, Ring1Devices.n_fraud_cases];
+  PRINT Ring1Customers[Ring1Customers.customer_id, Ring1Customers.n_cards, Ring1Customers.n_txn];
+  PRINT Ring2TxnsByDevice[Ring2TxnsByDevice.txn_id, Ring2TxnsByDevice.ts, Ring2TxnsByDevice.amount, Ring2TxnsByDevice.card1];
+  PRINT Ring2CardsByDevice[Ring2CardsByDevice.card_id, Ring2CardsByDevice.n_txn];
+  PRINT Ring2DevicesByCard[Ring2DevicesByCard.device_id, Ring2DevicesByCard.n_cards, Ring2DevicesByCard.n_txn];
+  PRINT Ring2TxnsByCard[Ring2TxnsByCard.txn_id, Ring2TxnsByCard.ts, Ring2TxnsByCard.amount];
+  PRINT Ring2CustomersByCard[Ring2CustomersByCard.customer_id];
+  PRINT CasesByCard[CasesByCard.case_id, CasesByCard.pattern, CasesByCard.outcome, CasesByCard.exposure_usd];
+  PRINT CasesByDevice[CasesByDevice.case_id, CasesByDevice.pattern, CasesByDevice.outcome, CasesByDevice.exposure_usd];
+}
+
+-- Shared-neighbor query used for explainable ring results.  Every returned
+-- transaction/card/customer is reachable through the same device as the seed.
+CREATE QUERY get_shared_neighbors(STRING in_txn_id) FOR GRAPH FraudGraph SYNTAX v3 {
+  SharedTxns = SELECT t2 FROM (t0:Transaction {txn_id: in_txn_id}) -[fd1:FROM_DEVICE]-> (d:DeviceProfile) <-[fd2:FROM_DEVICE]- (t2:Transaction);
+  SharedCards = SELECT k2 FROM (t0:Transaction {txn_id: in_txn_id}) -[fd3:FROM_DEVICE]-> (d2:DeviceProfile) <-[fd3b:FROM_DEVICE]- (t2b:Transaction) -[pw2:PAID_WITH]-> (k2:Card);
+  SharedCustomers = SELECT cu2 FROM (t0:Transaction {txn_id: in_txn_id}) -[fd4:FROM_DEVICE]-> (d3:DeviceProfile) <-[fd4b:FROM_DEVICE]- (t3:Transaction) -[pw3:PAID_WITH]-> (k3:Card) <-[oc3:OWNS_CARD]- (cu2:Customer);
+  PRINT SharedTxns[SharedTxns.txn_id, SharedTxns.ts, SharedTxns.amount, SharedTxns.card1, SharedTxns.addr1];
+  PRINT SharedCards[SharedCards.card_id, SharedCards.n_txn];
+  PRINT SharedCustomers[SharedCustomers.customer_id, SharedCustomers.n_cards, SharedCustomers.n_txn];
+}
+
+CREATE QUERY get_case_memory(STRING in_txn_id, STRING in_pattern, UINT in_limit) FOR GRAPH FraudGraph SYNTAX v3 {
+  PatternCases = SELECT p FROM (p:ClosedCase)
+      WHERE in_pattern != "" AND p.pattern == in_pattern
+      ORDER BY p.exposure_usd DESC
+      LIMIT in_limit;
+  CardCases = SELECT cc1 FROM (t0:Transaction {txn_id: in_txn_id}) -[pw1:PAID_WITH]-> (k:Card) <-[ce1:CASE_CARD]- (cc1:ClosedCase)
+      ORDER BY cc1.exposure_usd DESC
+      LIMIT in_limit;
+  DeviceCases = SELECT cc2 FROM (t0:Transaction {txn_id: in_txn_id}) -[fd1:FROM_DEVICE]-> (d:DeviceProfile) <-[ce2:CASE_DEVICE]- (cc2:ClosedCase)
+      ORDER BY cc2.exposure_usd DESC
+      LIMIT in_limit;
+  PRINT PatternCases[PatternCases.case_id, PatternCases.customer_id, PatternCases.card_id, PatternCases.pattern, PatternCases.outcome, PatternCases.exposure_usd, PatternCases.n_txns, PatternCases.actions, PatternCases.notes];
+  PRINT CardCases[CardCases.case_id, CardCases.customer_id, CardCases.card_id, CardCases.pattern, CardCases.outcome, CardCases.exposure_usd, CardCases.n_txns, CardCases.actions, CardCases.notes];
+  PRINT DeviceCases[DeviceCases.case_id, DeviceCases.customer_id, DeviceCases.card_id, DeviceCases.pattern, DeviceCases.outcome, DeviceCases.exposure_usd, DeviceCases.n_txns, DeviceCases.actions, DeviceCases.notes];
+}
+
+-- A small text result set is intentionally separate from vector indexing.  The
+-- MCP policy tool ranks these real PolicyChunk rows with the local deterministic
+-- 384-d encoder when TigerVector is unavailable.
+CREATE QUERY get_policy_chunks() FOR GRAPH FraudGraph SYNTAX v3 {
+  P = SELECT p FROM (p:PolicyChunk);
+  PRINT P[P.chunk_id, P.kind, P.title, P.text];
+}
+
+CREATE QUERY get_email_crosslinks(STRING in_domain, DATETIME in_start, DATETIME in_end) FOR GRAPH FraudGraph SYNTAX v3 {
+  T = SELECT t FROM (e:EmailDomain {domain: in_domain}) <-[pe:P_EMAIL]- (t:Transaction)
+      WHERE t.ts >= in_start AND t.ts <= in_end
+      ORDER BY t.ts ASC;
+  T2 = SELECT t FROM (e:EmailDomain {domain: in_domain}) <-[re:R_EMAIL]- (t:Transaction)
+      WHERE t.ts >= in_start AND t.ts <= in_end
+      ORDER BY t.ts ASC;
+  Cards = SELECT k FROM (e:EmailDomain {domain: in_domain}) <-[pe:P_EMAIL]- (t:Transaction) -[pw:PAID_WITH]-> (k:Card);
+  PRINT Cards[Cards.card_id];
+  PRINT T[T.txn_id, T.ts, T.amount];
+  PRINT T2[T2.txn_id, T2.ts, T2.amount];
+}
+
+CREATE QUERY find_similar_cases(STRING in_pattern, FLOAT in_exposure_usd) FOR GRAPH FraudGraph SYNTAX v3 {
+  S = SELECT s FROM (s:ClosedCase)
+      WHERE s.pattern == in_pattern AND s.outcome == "confirmed_fraud"
+      ORDER BY s.exposure_usd ASC
+      LIMIT 200;
+  PRINT S[S.case_id, S.outcome, S.pattern, S.exposure_usd, S.n_txns, S.actions,
+          S.report_filed, S.notes];
+}
+
+CREATE QUERY upsert_agent_case(STRING in_case_id, STRING in_status, STRING in_verdict, STRING in_pattern,
+        STRING in_pattern_desc, DOUBLE in_fraud_prob, DOUBLE in_exposure,
+        DATETIME in_opened, STRING in_stop, STRING in_summary, STRING in_answer_json) FOR GRAPH FraudGraph SYNTAX v3 {
+  S = SELECT s FROM (s:AgentCase {case_id: in_case_id})
+      POST-ACCUM s.status = in_status, s.verdict = in_verdict, s.pattern = in_pattern,
+            s.pattern_description = in_pattern_desc, s.fraud_probability = in_fraud_prob,
+            s.exposure_usd = in_exposure, s.opened_at = in_opened,
+            s.stop_reason = in_stop, s.summary = in_summary, s.answer_json = in_answer_json;
+  PRINT S[S.case_id];
+}
+
+CREATE QUERY get_agent_case(STRING in_case_id) FOR GRAPH FraudGraph SYNTAX v3 {
+  S = SELECT s FROM (s:AgentCase {case_id: in_case_id});
+  Txns = SELECT t FROM (s:AgentCase {case_id: in_case_id}) -[e:AG_TXN]-> (t:Transaction);
+  Cards = SELECT k FROM (s:AgentCase {case_id: in_case_id}) -[e2:AG_CARD]-> (k:Card);
+  Devices = SELECT d FROM (s:AgentCase {case_id: in_case_id}) -[e3:AG_DEVICE]-> (d:DeviceProfile);
+  Priors = SELECT cc FROM (s:AgentCase {case_id: in_case_id}) -[e4:AG_SIMILAR]-> (cc:ClosedCase);
+  PRINT S[S.verdict, S.pattern, S.fraud_probability, S.exposure_usd, S.status, S.stop_reason, S.summary];
+  PRINT Txns[Txns.txn_id];
+  PRINT Cards[Cards.card_id];
+  PRINT Devices[Devices.device_id];
+  PRINT Priors[Priors.case_id];
+}

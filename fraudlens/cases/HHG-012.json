@@ -1,0 +1,106 @@
+{
+  "case_id": "HHG-012",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.9919,
+    "pattern": "out_of_region_use",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3553342",
+      "3561044"
+    ],
+    "first_suspicious_txn_id": "3553342",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 84.77,
+    "evidence": [
+      {
+        "claim": "Flagged transaction 3553342: $30.91 in_person (W) with model risk score 0.55 - a reason to look, not a verdict.",
+        "source": "graph",
+        "ref": "query:get_transaction_context",
+        "entity_ids": [
+          "3553342"
+        ]
+      },
+      {
+        "claim": "Card window shows 2 transactions within +-24h of the trigger (sum $84.77); card's 30-day baseline mean ratio 0.42.",
+        "source": "graph",
+        "ref": "query:get_card_window",
+        "entity_ids": [
+          "3553342",
+          "3561044"
+        ]
+      },
+      {
+        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-2228, CC-1574, CC-4585).",
+        "source": "graph",
+        "ref": "query:find_similar_cases",
+        "entity_ids": [
+          "CC-2228",
+          "CC-1574",
+          "CC-4585"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-2228",
+      "CC-1574",
+      "CC-4585"
+    ],
+    "summary": "Alert HHG-012: the model scored it 0.55 on transaction 3553342 ($30.91, in_person). Investigation supports out of region use: 2 transaction(s) in the episode, exposure $84.77. Probability 0.99.",
+    "written_to_graph": true,
+    "graph_case_id": "AG-HHG-012"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R1/R2: fraud probability 0.99 supported by independent graph evidence"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: open internal case with evidence attached"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R1/R2: fraud probability 0.99 supported by independent graph evidence"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: open internal case with evidence attached"
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a: case only - exposure under $1,000, no shared or undocumented link (most cases never need a report)",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Probability 0.99 beyond the 0.85/0.15 thresholds with 3 independent evidence items (policy 6).",
+  "tool_calls": 55,
+  "tokens": 0,
+  "latency_s": 3.6,
+  "_states": [
+    "TRIGGERED",
+    "CONTEXT_RETRIEVED",
+    "EVIDENCE_GATHERED",
+    "PATTERNS_ASSESSED",
+    "MEMORY_RETRIEVED",
+    "NBA_INITIAL",
+    "NBA_FINAL",
+    "CASE_WRITTEN",
+    "ANSWER_EXPORTED"
+  ]
+}

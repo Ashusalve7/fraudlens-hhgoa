@@ -1,0 +1,414 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-24T20:51:04.313712+00:00",
+  "git_commit": null,
+  "files": [
+    {
+      "path": "HHGOA_IEEE/case_pack.csv",
+      "bytes": 3548
+    },
+    {
+      "path": "HHGOA_IEEE/closed_cases_history.csv",
+      "bytes": 2706417
+    },
+    {
+      "path": "HHGOA_IEEE/identity.csv",
+      "bytes": 26716154
+    },
+    {
+      "path": "HHGOA_IEEE/transactions.csv",
+      "bytes": 707936515
+    },
+    {
+      "path": "fraudlens/agent/decision.py",
+      "bytes": 30751,
+      "sha256": "8226727c92ba1241524e81505eb17af8c6cd217bc15665c2c0505eb53eff805e"
+    },
+    {
+      "path": "fraudlens/agent/episodes.py",
+      "bytes": 17622,
+      "sha256": "bc0bf7edac1e6f53892510d8051c1fae9f90c91d14ca60c165d585ce32d95302"
+    },
+    {
+      "path": "fraudlens/agent/evidence.py",
+      "bytes": 8676,
+      "sha256": "4ca0454947b53ded3eb28e8111c2339a920bec44698aba121ba7a2507e19bc35"
+    },
+    {
+      "path": "fraudlens/agent/features.py",
+      "bytes": 14860,
+      "sha256": "72747aeace639223a28fb241b54d1225104f07855f602fa235b370fdbc8656f3"
+    },
+    {
+      "path": "fraudlens/agent/sar.py",
+      "bytes": 10081,
+      "sha256": "2977354196521ae2b5edb15271e96e3194f97bb92c184dfb0d6b3b995978bbf3"
+    },
+    {
+      "path": "fraudlens/cases/HHG-001.json",
+      "bytes": 3089,
+      "sha256": "b6862d5ce158a81629e948b6582d99825d9f8c844a8468f049a2b66c2321ffed"
+    },
+    {
+      "path": "fraudlens/cases/HHG-002.json",
+      "bytes": 4024,
+      "sha256": "41dc793a53fc805535f8738eac38e75ced20509117920bbb942e4e270beb374f"
+    },
+    {
+      "path": "fraudlens/cases/HHG-003.json",
+      "bytes": 3177,
+      "sha256": "8b3ff0adf6ea9894677bc4a538fb84cebfba73c5e0326e297ffa32c13da41a63"
+    },
+    {
+      "path": "fraudlens/cases/HHG-004.json",
+      "bytes": 5572,
+      "sha256": "e1687b109e029ded42c502c2dede698a6f23e1339a433f095134e754965f6c89"
+    },
+    {
+      "path": "fraudlens/cases/HHG-005.json",
+      "bytes": 5953,
+      "sha256": "a8be42dcd5e4be160ffbbf92f538be42c37f5216cdb16e03e241610c5b138171"
+    },
+    {
+      "path": "fraudlens/cases/HHG-006.json",
+      "bytes": 5250,
+      "sha256": "64fec43ff28274d6c2f006a4eb9c181290118dfaa9711f56a8e9c6770ae5d6de"
+    },
+    {
+      "path": "fraudlens/cases/HHG-007.json",
+      "bytes": 5140,
+      "sha256": "2d1d9b576ba3d5caeaf4c937ce8f4b2ddc7a106a7405e790842b6ea062a41905"
+    },
+    {
+      "path": "fraudlens/cases/HHG-008.json",
+      "bytes": 3173,
+      "sha256": "8a3fc1583a569a46438dec72fb71131e2e2e3dc544ba8266de5b02dd40b5d9c9"
+    },
+    {
+      "path": "fraudlens/cases/HHG-009.json",
+      "bytes": 3980,
+      "sha256": "972bdc2dcf474c148c6e0fa53c448e975fca8ec01f231c2742c476c7d6350355"
+    },
+    {
+      "path": "fraudlens/cases/HHG-010.json",
+      "bytes": 3828,
+      "sha256": "fb1d165ba8ec1769d34a246781cf505333bec9c23683bc65e80cce52f612f878"
+    },
+    {
+      "path": "fraudlens/cases/HHG-011.json",
+      "bytes": 3175,
+      "sha256": "6b0d9c2ee4ebc7f54f838f15e5d1186b047bb648e72e20b62524cff7bbb1035d"
+    },
+    {
+      "path": "fraudlens/cases/HHG-012.json",
+      "bytes": 3129,
+      "sha256": "00466efdf013ed27e3d4714a8e351acb35d8b94b75b4c367af071a74e2c94572"
+    },
+    {
+      "path": "fraudlens/cases/HHG-013.json",
+      "bytes": 4796,
+      "sha256": "90bf4ae0aafd750d18aee161ef8a767bb8a52a52608fbcec53d9bbbb8731e57b"
+    },
+    {
+      "path": "fraudlens/cases/HHG-014.json",
+      "bytes": 5260,
+      "sha256": "04215ad4854bc94bc3b8f1291186e175b7b8f56ce59127ac3343d5ac9ff7cbb4"
+    },
+    {
+      "path": "fraudlens/cases/HHG-015.json",
+      "bytes": 4106,
+      "sha256": "1952aa162afc4afa6643b18f47f5a0e0d00e4bf258890892e595694d4e12c02c"
+    },
+    {
+      "path": "fraudlens/cases/HHG-016.json",
+      "bytes": 5418,
+      "sha256": "49aaa5e56f4082571cb527ad4c73fcf40b368fadd00f53a08fac31ebce4b7e27"
+    },
+    {
+      "path": "fraudlens/cases/HHG-017.json",
+      "bytes": 3955,
+      "sha256": "751597623be62bf8ae9b3d4d2405597be2ceaa7403458138a0c4a72892c650b1"
+    },
+    {
+      "path": "fraudlens/cases/HHG-018.json",
+      "bytes": 3178,
+      "sha256": "cf9e5f77f9a5692f63560d1017566618ce14ee61ff1084b5b74deba8bd697a03"
+    },
+    {
+      "path": "fraudlens/cases/HHG-019.json",
+      "bytes": 3696,
+      "sha256": "ee44ea96108eec171834cd250d0823a7eae918ba7bdfdd41619317696dfe6d98"
+    },
+    {
+      "path": "fraudlens/cases/HHG-020.json",
+      "bytes": 3886,
+      "sha256": "7b8c1b6f65a516f3bb389ab4287b3f7a50d6d8d47ef49dbbf21096a25309acdf"
+    },
+    {
+      "path": "fraudlens/dashboard/app.py",
+      "bytes": 37978,
+      "sha256": "3fe628d56e2987ffe05cf9a8dd3fa3ea910545cc46494c55b400ec336f726325"
+    },
+    {
+      "path": "fraudlens/dashboard/package-lock.json",
+      "bytes": 78260,
+      "sha256": "f4c1f2a27afb4ce51273535ba280847cd573cc9659ba76b23c6fb98b417af19d"
+    },
+    {
+      "path": "fraudlens/dashboard/package.json",
+      "bytes": 418,
+      "sha256": "9cac049bba51828441da34fa2bbd7adb03b7753455d9206f09a1257a14f8da56"
+    },
+    {
+      "path": "fraudlens/dashboard/src/App.jsx",
+      "bytes": 8302,
+      "sha256": "98e2c76d06bc634b9b74a8fe1783e928e6fc9b12752a7e05981968319ea1a0d9"
+    },
+    {
+      "path": "fraudlens/dashboard/src/api.js",
+      "bytes": 1267,
+      "sha256": "855eccfd4d245348eb8fc5bd254bc8f9075d1b618444b7b95de4aa5e0ac37d97"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/ActionsPanel.jsx",
+      "bytes": 5224,
+      "sha256": "b510f044f3513d3457732aae78ee480f81041eb1ef41f2013716ffb417b71b0c"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/AnalyticsView.jsx",
+      "bytes": 13115,
+      "sha256": "63d9558b158a931e24818a5666bbf9d28e9ff9a5fa065e8b1194c8a70b5225ed"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/CaseDetail.jsx",
+      "bytes": 143,
+      "sha256": "7a38660ed7895b1f3a0717ca888e54cedc3798a16a6c94be83549c8ca67819fd"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/CaseTimeline.jsx",
+      "bytes": 1168,
+      "sha256": "7cefe60f27c86de37231975aee6fe224efb26f21de073d587fb7a61bc6060264"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/CaseWorkspace.jsx",
+      "bytes": 8228,
+      "sha256": "c23ab75cfb8089c17c7632deca4baf21434c04f3b3ea72d004f75bb71068c5ac"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/EvidenceList.jsx",
+      "bytes": 2199,
+      "sha256": "d9c05ed885b73401b88fa6bf932d5caef15c9563fd2e272ea635d5a1abab2371"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/EvidenceRequests.jsx",
+      "bytes": 1923,
+      "sha256": "daccabc6b8810dd6a6f86b49bfd99fde52f6401fbf2df75236716b8dae5fa6f8"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/InvestGraph.jsx",
+      "bytes": 12558,
+      "sha256": "ef8bd02e0d493d799c31ee43462197b66bb274acb282b05dce17da86461e9323"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/Queue.jsx",
+      "bytes": 952,
+      "sha256": "277ae1565366f4e81e7d6b52975f8570520795c27c5750c32efea271f8798de9"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/ResourceState.jsx",
+      "bytes": 1419,
+      "sha256": "cc68a38d61c92ab22ce3f3ef751f031693e51b16be22eca996c5f4342068b903"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/RingView.jsx",
+      "bytes": 3527,
+      "sha256": "5e622ed727e1696a46f02b26dfb0d703ea0ac895138c299960a992c6d9624392"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/RiskGauge.jsx",
+      "bytes": 1702,
+      "sha256": "b2f797c385caea5bb2cda9e444b6b68a11a50c32de8310e0e48c87b3db704133"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/SarDraft.jsx",
+      "bytes": 4989,
+      "sha256": "ced49c00a4ae636f5c406eb2b0b67efa0515ef61f0aa9e07693fef915edf4232"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/ScoreExplanation.jsx",
+      "bytes": 6692,
+      "sha256": "da52c8538ef9c80c93a3342b68561092748d8d8723206e425aba093248c8725c"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/SimilarCases.jsx",
+      "bytes": 3044,
+      "sha256": "9c532ac5682cc66bd58c6c9f08bced838bb9305f0c182be12bbfe26a5121defa"
+    },
+    {
+      "path": "fraudlens/dashboard/src/components/UncertaintyPanel.jsx",
+      "bytes": 4766,
+      "sha256": "e8b2cfd63c7178f5043bae618bb470fe1e873a0fb79c26ddb2362554fd999c0e"
+    },
+    {
+      "path": "fraudlens/dashboard/src/data/FraudLensData.jsx",
+      "bytes": 4898,
+      "sha256": "9340d94d0a8c72e65aed4a36048a391d51237ebc2c485ea11a0d8ea1cfab263c"
+    },
+    {
+      "path": "fraudlens/dashboard/src/lib/case.js",
+      "bytes": 1160,
+      "sha256": "2974b1cc4292cafc0abffc0c239140c5291051b6e6341a69421e530ab7f41ad4"
+    },
+    {
+      "path": "fraudlens/dashboard/src/lib/format.js",
+      "bytes": 3365,
+      "sha256": "57140dcdda8f893898e24338d30fc834da86928760757139e616481d5f5e3cba"
+    },
+    {
+      "path": "fraudlens/dashboard/src/main.jsx",
+      "bytes": 322,
+      "sha256": "43a408dea57afc3e9952603b99d47b54b0f2bb89c50f9a73d458edc4f92b0ee6"
+    },
+    {
+      "path": "fraudlens/dashboard/src/pages/CasePage.jsx",
+      "bytes": 3321,
+      "sha256": "2f4406d7ca80f6726bb4bc9bc3c8d63b7563f41e9931ef3b6e91bb0ebd7471ab"
+    },
+    {
+      "path": "fraudlens/dashboard/src/pages/CasesPage.jsx",
+      "bytes": 13834,
+      "sha256": "d1ae326c76700241b3d9fdb2886d9ff1ea78b3b71937a37028a50401ee9ea582"
+    },
+    {
+      "path": "fraudlens/dashboard/src/styles.css",
+      "bytes": 49608,
+      "sha256": "5f490e00ad14df2e2f0955398049401aa26f723a31654222a90e397b1f3ce593"
+    },
+    {
+      "path": "fraudlens/eval/build_features.py",
+      "bytes": 7870,
+      "sha256": "bed71848d8fef643eeb02aceedd50e6bd49d3918f01bf650fd2a716f09e78a09"
+    },
+    {
+      "path": "fraudlens/eval/out/model.json",
+      "bytes": 1981,
+      "sha256": "34ca9cb8d8699ebd7e6173d4ad3c02bfdac95c09b4101c2db22dd9b02cdd5910"
+    },
+    {
+      "path": "fraudlens/eval/train.py",
+      "bytes": 5706,
+      "sha256": "cf71c09b5be72f5c0912a7c434195c9ec5279a17bcbb62730959b7e2df10534b"
+    },
+    {
+      "path": "fraudlens/gsql/evidence_queries.gsql",
+      "bytes": 12685,
+      "sha256": "2bfa9d51a6beede71ac91625f00a1a5356d7772a3853b454712842dfbedd76cf"
+    },
+    {
+      "path": "fraudlens/gsql/schema.gsql",
+      "bytes": 3629,
+      "sha256": "cb28181e878689ab37e149f309fd600d04ceb58eb4d984de4ed9ecbcdbe31e51"
+    },
+    {
+      "path": "fraudlens/pipeline/__init__.py",
+      "bytes": 45,
+      "sha256": "451d5e3867d53bc732d29ed9ca1fb3cd89bd39a071aea9f1b0758434d956f748"
+    },
+    {
+      "path": "fraudlens/pipeline/analyze_card_rule.py",
+      "bytes": 4507,
+      "sha256": "79e7c451834cf05242fa6f5ff0725a841e1b54cc539338a027ee78bacae5533f"
+    },
+    {
+      "path": "fraudlens/pipeline/analyze_card_rule2.py",
+      "bytes": 3597,
+      "sha256": "ab7154d4c808b34c8e3abe387511ef57209c6a54edd5ddbe43f3f51e2adcd8b0"
+    },
+    {
+      "path": "fraudlens/pipeline/analyze_card_rule3.py",
+      "bytes": 2749,
+      "sha256": "4a31a92217265e4fdedbc7a6203f54af68a91c69f0dfa418342e46e6c9606e96"
+    },
+    {
+      "path": "fraudlens/pipeline/analyze_card_rule4.py",
+      "bytes": 1699,
+      "sha256": "efcc9863c63a87c1d6178c65017cfc2458af760dbf44b04161cd7fd7d96fd1df"
+    },
+    {
+      "path": "fraudlens/pipeline/analyze_card_rule5.py",
+      "bytes": 3199,
+      "sha256": "3a42f1f37befa4b7ddc42c7b9f275ab0ea0ad771fe4f5e61cc00f65b83b29401"
+    },
+    {
+      "path": "fraudlens/pipeline/build_load_files.py",
+      "bytes": 23663,
+      "sha256": "fc3c40d15d98b1eadc9af574b54b5b2376207a83baf48e3b0b46f045c05a7b30"
+    },
+    {
+      "path": "fraudlens/pipeline/create_schema.py",
+      "bytes": 3936,
+      "sha256": "4e7f380377318df34860ce5be1a7ddaf45962acc7fee54c150ba36d96f2d8169"
+    },
+    {
+      "path": "fraudlens/pipeline/derive_card_ids.py",
+      "bytes": 349,
+      "sha256": "c0ebdb51907393587d9654ab0c3e91be4e26963a46fa82eb3875ab5190d0ab11"
+    },
+    {
+      "path": "fraudlens/pipeline/derive_card_ids_final.py",
+      "bytes": 8192,
+      "sha256": "a946e43a983144cdc902670510557619dee748ccdf66c30b55551db098f22b44"
+    },
+    {
+      "path": "fraudlens/pipeline/embeddings.py",
+      "bytes": 2617,
+      "sha256": "2344f71eff2a40b3b2d314d637f3c032d26e495395b0c5b1f15f1b22b7ad05cb"
+    },
+    {
+      "path": "fraudlens/pipeline/install_queries.py",
+      "bytes": 2402,
+      "sha256": "bb117b52581e9562022aa3f8177d7118910d10271f9c6433bfa4e7b564f2b6e0"
+    },
+    {
+      "path": "fraudlens/pipeline/load_contract.py",
+      "bytes": 16719,
+      "sha256": "0a388038283b82e950af9850ae96f3f25a6788f61f34a70a74e3485f70c9d552"
+    },
+    {
+      "path": "fraudlens/pipeline/load_graph.py",
+      "bytes": 17648,
+      "sha256": "86a41cde04ca5ac94f9d3281b513863ce690498a91ff0fdce76447808da40731"
+    },
+    {
+      "path": "fraudlens/pipeline/tg.py",
+      "bytes": 1407,
+      "sha256": "3cecd6f79a2defad137fb053c929b0325bc149d95ff8e37eb223cfff5f68c3a1"
+    },
+    {
+      "path": "fraudlens/pyproject.toml",
+      "bytes": 863,
+      "sha256": "9b8349513cfa9c889a1cb9d277a8dbff93949673c54fe867638238758560d0fc"
+    },
+    {
+      "path": "fraudlens/runner.py",
+      "bytes": 36592,
+      "sha256": "fb9b401f02980184becee8d717eccf18d421fe53330074ba9b5f6613b502d861"
+    },
+    {
+      "path": "fraudlens/schemas/answer.schema.json",
+      "bytes": 5982,
+      "sha256": "2cc1f813c98953f3af2f3894ead49586b07208d6ea4ba95ae7593e1f95fd030b"
+    },
+    {
+      "path": "fraudlens/uv.lock",
+      "bytes": 155781,
+      "sha256": "a6e79714ae0fd5a4ecf7e37cca5975b0c4ce96cb4663f474995f9bb09108ca20"
+    },
+    {
+      "path": "fraudlens/validator.py",
+      "bytes": 30868,
+      "sha256": "6ef65739a7a5167a496f7fe72d996f58d3ada471ca9d634b078221a9a8b24e05"
+    }
+  ],
+  "missing_expected": []
+}

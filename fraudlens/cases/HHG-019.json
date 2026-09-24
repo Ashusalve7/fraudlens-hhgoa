@@ -1,0 +1,118 @@
+{
+  "case_id": "HHG-019",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.0119,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Flagged transaction 3503878: $99.92 online (R) with model risk score 0.90 - a reason to look, not a verdict.",
+        "source": "graph",
+        "ref": "query:get_transaction_context",
+        "entity_ids": [
+          "3503878"
+        ]
+      },
+      {
+        "claim": "Card window shows 1 transactions within +-24h of the trigger (sum $99.92); card's 30-day baseline mean ratio 0.30.",
+        "source": "graph",
+        "ref": "query:get_card_window",
+        "entity_ids": [
+          "3503878"
+        ]
+      },
+      {
+        "claim": "Device profile 3497738 links 5 cards including cards outside this customer's ownership.",
+        "source": "graph",
+        "ref": "query:get_device_neighborhood",
+        "entity_ids": [
+          "C11309-K1",
+          "C01104-K2",
+          "C01983-K1",
+          "C06224-K2",
+          "C07987-K2"
+        ]
+      },
+      {
+        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-0245, CC-2419, CC-4232).",
+        "source": "graph",
+        "ref": "query:find_similar_cases",
+        "entity_ids": [
+          "CC-0245",
+          "CC-2419",
+          "CC-4232"
+        ]
+      },
+      {
+        "claim": "Customer confirms the transaction (assumption: profile resembles cleared alerts in case memory; no reply branch alternative recorded).",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-0245",
+      "CC-2419",
+      "CC-4232"
+    ],
+    "summary": "Alert HHG-019: the model scored it 0.90 on transaction 3503878 ($99.92, online). Evidence is consistent with legitimate cardholder activity; probability 0.01. The customer confirmed the transaction.",
+    "written_to_graph": true,
+    "graph_case_id": "AG-HHG-019"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 88,
+      "assumed_response": "Customer confirms the transaction (assumption: profile resembles cleared alerts in case memory; no reply branch alternative recorded)."
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R1: probability 0.01 at or below 0.15 with sufficient evidence"
+      }
+    ],
+    "final": [
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: customer confirmed the transaction"
+      }
+    ],
+    "what_changed": "Customer confirmation lowered probability from 0.01 to 0.01; recommendation moved to close as legitimate per R3."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a: no report without confirmed or strongly suspected fraud",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "A verification response settled the question (policy 6).",
+  "tool_calls": 89,
+  "tokens": 0,
+  "latency_s": 3.6,
+  "_states": [
+    "TRIGGERED",
+    "CONTEXT_RETRIEVED",
+    "EVIDENCE_GATHERED",
+    "PATTERNS_ASSESSED",
+    "MEMORY_RETRIEVED",
+    "NBA_INITIAL",
+    "EVIDENCE_REQUESTED",
+    "EVIDENCE_RECEIVED",
+    "NBA_FINAL",
+    "CASE_WRITTEN",
+    "ANSWER_EXPORTED"
+  ]
+}

@@ -1,0 +1,143 @@
+{
+  "case_id": "HHG-007",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.9,
+    "pattern": "account_takeover",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3509355",
+      "3509466",
+      "3513495",
+      "3513664",
+      "3514137",
+      "3517314",
+      "3517460",
+      "3520325"
+    ],
+    "first_suspicious_txn_id": "3509355",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 10797.26,
+    "evidence": [
+      {
+        "claim": "Flagged transaction 3514948: $111.92 in_person (W) with model risk score 0.87 - a reason to look, not a verdict.",
+        "source": "graph",
+        "ref": "query:get_transaction_context",
+        "entity_ids": [
+          "3514948"
+        ]
+      },
+      {
+        "claim": "Card window shows 8 transactions within +-24h of the trigger (sum $10,797.26); card's 30-day baseline mean ratio 0.82.",
+        "source": "graph",
+        "ref": "query:get_card_window",
+        "entity_ids": [
+          "3509355",
+          "3509466",
+          "3513495",
+          "3513664",
+          "3514137",
+          "3517314",
+          "3517460",
+          "3520325"
+        ]
+      },
+      {
+        "claim": "Case memory: nearest closed cases with the same pattern retrieved (CC-3846, CC-2597, CC-2097).",
+        "source": "graph",
+        "ref": "query:find_similar_cases",
+        "entity_ids": [
+          "CC-3846",
+          "CC-2597",
+          "CC-2097"
+        ]
+      },
+      {
+        "claim": "Customer states they did not make this card-present transaction of $111.92; card still in possession (assumption based on nearest similar closed cases: CC-3846, CC-2597, CC-2097).",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3846",
+      "CC-2597",
+      "CC-2097"
+    ],
+    "summary": "Alert HHG-007: the model scored it 0.87 on transaction 3514948 ($111.92, in_person). Investigation supports account takeover: 8 transaction(s) in the episode, exposure $10,797.26. The customer denied the transaction when asked. Probability 0.90.",
+    "written_to_graph": true,
+    "graph_case_id": "AG-HHG-007"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 30,
+      "assumed_response": "Customer states they did not make this card-present transaction of $111.92; card still in possession (assumption based on nearest similar closed cases: CC-3846, CC-2597, CC-2097)."
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R8: uncertain verdict (p=0.57) with exposure $10,797.26 over $500"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: verify before any block"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L2",
+        "reason": "R2: customer denied the transaction"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: open internal case with the evidence attached"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R2: exposure exceeds $1,000 or case connects to a shared element/other card's fraud"
+      }
+    ],
+    "what_changed": "Customer denial raised probability from 0.57 to 0.90; recommendation moved from verify to block/case/report per R2."
+  },
+  "sar": {
+    "file": true,
+    "reason": "3a/R2/R6/R9: exposure $10,797.26 exceeds $1,000",
+    "narrative": "On 2016-12-05, card C09933-K2 belonging to customer C09933 was used for 8 transaction(s) totaling $10,797.26, beginning with transaction 3509355 ($111.92, in_person channel). The activity is inconsistent with the cardholder's established pattern and is classified as account takeover. Graph analysis linked the involved device profile and payment card to related activity on other cards within the same window, indicating a common origin across accounts. The cardholder was asked to validate the activity; the recorded response supported unauthorized use. Based on the exposure exceeding $1,000 and the connection to other compromised cards, the bank files this report on the described activity. Affected transactions: 3509355, 3509466, 3513495, 3513664, 3514137, 3517314, 3517460, 3520325.",
+    "subjects": [
+      "C09933",
+      "C09933-K2"
+    ],
+    "total_amount_usd": 10797.26,
+    "activity_dates": [
+      "2016-12-05",
+      "2016-12-05"
+    ]
+  },
+  "stop_reason": "A verification response settled the question (policy 6).",
+  "tool_calls": 31,
+  "tokens": 0,
+  "latency_s": 3.53,
+  "_states": [
+    "TRIGGERED",
+    "CONTEXT_RETRIEVED",
+    "EVIDENCE_GATHERED",
+    "PATTERNS_ASSESSED",
+    "MEMORY_RETRIEVED",
+    "NBA_INITIAL",
+    "EVIDENCE_REQUESTED",
+    "EVIDENCE_RECEIVED",
+    "NBA_FINAL",
+    "CASE_WRITTEN",
+    "ANSWER_EXPORTED"
+  ]
+}
