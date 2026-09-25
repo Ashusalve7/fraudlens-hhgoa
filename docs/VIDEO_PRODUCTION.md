@@ -1,5 +1,7 @@
 # FraudLens five-minute video runbook
 
+For a shorter, casual student-style take, use [`VIDEO_SCRIPT_4MIN_STUDENT.md`](VIDEO_SCRIPT_4MIN_STUDENT.md).
+
 Do not record the final video until the 20 regenerated answers, graph-health report, semantic validator, and production dashboard all pass. The values in this runbook are copied from the final generated artifacts; recheck them if any case is regenerated.
 
 ## Recording setup
