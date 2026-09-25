@@ -2,8 +2,8 @@
 
 **Style:** casual, slightly conversational, light Hinglish, like a student explaining a project to a friend. Do not sound like a sales presentation. Keep the screen and voice roughly in sync.
 
-**Total:** 4:00  
-**Routes:** `/`, `/cases/HHG-014`, `/cases/HHG-002`, `/analytics`  
+**Total:** 4:00
+**Routes:** `/`, `/cases/HHG-014`, `/cases/HHG-002`, `/analytics`
 **Important:** Keep `.env`, terminal secrets, cloud-admin pages, and the raw CSV files off screen.
 
 ---
