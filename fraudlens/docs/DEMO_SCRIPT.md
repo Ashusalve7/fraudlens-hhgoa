@@ -6,6 +6,8 @@ Use this script only after the final release gate passes. The values below come 
 
 > A risk score is a reason to investigate, not a verdict. FraudLens gathers connected evidence, shows uncertainty, follows the bank's approval policy, and records what it did—and what it assumed.
 
+The FraudLens GraphRAG Engine follows one simple flow: **retrieve → bound → score → decide**. TigerGraph supplies the evidence, `opened_at` and IDs keep it honest, the calibrated model gives likelihood, and deterministic policy chooses the action.
+
 Show the investigation queue, the explicit read-only banner, and graph health.
 
 ## 0:30–1:30 — HHG-014: graph-native evidence

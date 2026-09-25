@@ -20,11 +20,11 @@
 
 ## 0:20–0:45 — What is inside the project?
 
-**On screen:** Show the queue, then briefly show the project structure or architecture slide.
+**On screen:** Show the queue, then briefly show the project structure or architecture slide. Highlight the flow: **retrieve → bound → score → decide**.
 
 **Say:**
 
-> The dataset has 590,742 transactions and 5,565 historical cases. FraudLens derives card IDs, loads them into TigerGraph, and uses the official MCP SDK over stdio. The agent gets 11 named tools backed by 14 GSQL queries, not arbitrary GSQL. Every investigation stops at `opened_at`, so future transactions cannot leak in.
+> The dataset has 590,742 transactions and 5,565 historical cases. FraudLens GraphRAG works in four steps: retrieve transaction, device, policy and case context from TigerGraph; bound it by `opened_at` and IDs; score likelihood with a calibrated model; then let deterministic policy choose the action and approval route. It uses official MCP with 11 named tools and 14 GSQL queries, not arbitrary GSQL or a hosted LLM making decisions.
 
 ---
 
@@ -114,6 +114,7 @@
 - `opened_at` is the evidence cutoff.
 - HHG-014: source score `0.05`, 255 nodes, 338 edges, 19 cards, 4 prior confirmed-fraud cases.
 - Generic device reuse is not automatically a fraud ring.
+- GraphRAG flow: retrieve → bound by cutoff/IDs → calibrated score → deterministic action.
 - Model likelihood and deterministic policy are separate.
 - Simulated evidence is visibly labeled.
 - L1/L2 actions require human approval.
