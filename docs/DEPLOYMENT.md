@@ -25,13 +25,13 @@ The checked-in `wrangler.toml` and `render.yaml` contain no credentials.
    - `TG_HOST`: the dedicated TigerGraph runtime host
    - `TG_SECRET`: the newly rotated dedicated secret
    - `TG_GRAPHNAME`: `FraudGraph`
-   - `FRAUDLENS_ALLOWED_ORIGINS`: the exact Cloudflare Pages origin, for example `https://fraudlens-hhgoa.pages.dev`
+   - `FRAUDLENS_ALLOWED_ORIGINS`: `https://fraudlens-hhgoa-8ru.pages.dev`
    - `FRAUDLENS_API_TOKEN`: leave unset for the public read-only demo; if set, use a server-side proxy rather than embedding it in the frontend
 
 4. Deploy the service and wait for the health check:
 
 ```text
-https://<render-service-name>.onrender.com/health
+https://fraudlens-api-gk16.onrender.com/health
 ```
 
 A healthy response has JSON with `ready: true` when the graph is reachable. The Render free plan can sleep; the dashboard displays retry/unavailable states instead of pretending the graph is live.
@@ -55,7 +55,7 @@ If the project already exists, skip the create command.
 Set the Render URL as a build-time variable. The frontend uses it for `/api` calls; do not use `localhost` in a public build.
 
 ```powershell
-$env:VITE_API_BASE_URL = "https://<render-service-name>.onrender.com"
+$env:VITE_API_BASE_URL = "https://fraudlens-api-gk16.onrender.com"
 npm.cmd run build --prefix fraudlens/dashboard
 npx.cmd wrangler pages deploy fraudlens/dashboard/dist --project-name fraudlens-hhgoa --branch main
 Remove-Item Env:VITE_API_BASE_URL
@@ -70,11 +70,11 @@ After Cloudflare gives the Pages URL, set that exact origin in Render's `FRAUDLE
 Run these checks without printing any secret:
 
 ```powershell
-Invoke-WebRequest https://<render-service-name>.onrender.com/health
-Invoke-WebRequest https://<render-service-name>.onrender.com/api/cases
-Invoke-WebRequest https://fraudlens-hhgoa.pages.dev/
-Invoke-WebRequest https://fraudlens-hhgoa.pages.dev/cases/HHG-014
-Invoke-WebRequest https://fraudlens-hhgoa.pages.dev/analytics
+Invoke-WebRequest https://fraudlens-api-gk16.onrender.com/health
+Invoke-WebRequest https://fraudlens-api-gk16.onrender.com/api/cases
+Invoke-WebRequest https://fraudlens-hhgoa-8ru.pages.dev/
+Invoke-WebRequest https://fraudlens-hhgoa-8ru.pages.dev/cases/HHG-014
+Invoke-WebRequest https://fraudlens-hhgoa-8ru.pages.dev/analytics
 ```
 
 In the browser, verify:

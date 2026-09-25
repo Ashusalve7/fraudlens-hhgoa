@@ -18,6 +18,6 @@ services:
       - key: TG_GRAPHNAME
         value: FraudGraph
       - key: FRAUDLENS_ALLOWED_ORIGINS
-        sync: false
+        value: https://fraudlens-hhgoa-8ru.pages.dev
       - key: FRAUDLENS_API_TOKEN
         sync: false
