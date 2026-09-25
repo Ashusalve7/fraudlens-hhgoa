@@ -13,6 +13,9 @@ class FrontendAssetSmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = (SRC / "App.jsx").read_text(encoding="utf-8")
+        cls.api = (SRC / "api.js").read_text(encoding="utf-8")
+        cls.redirects = (DASHBOARD / "public" / "_redirects").read_text(encoding="utf-8")
+        cls.headers = (DASHBOARD / "public" / "_headers").read_text(encoding="utf-8")
         cls.data = (SRC / "data" / "FraudLensData.jsx").read_text(encoding="utf-8")
         cls.cases = (SRC / "pages" / "CasesPage.jsx").read_text(encoding="utf-8")
         cls.graph = (SRC / "components" / "InvestGraph.jsx").read_text(encoding="utf-8")
@@ -23,6 +26,8 @@ class FrontendAssetSmokeTests(unittest.TestCase):
         cls.styles = (SRC / "styles.css").read_text(encoding="utf-8")
         cls.index = (DASHBOARD / "index.html").read_text(encoding="utf-8")
         cls.vite = (DASHBOARD / "vite.config.js").read_text(encoding="utf-8")
+        cls.wrangler = (ROOT / "wrangler.toml").read_text(encoding="utf-8")
+        cls.render = (ROOT / "render.yaml").read_text(encoding="utf-8")
 
     def test_stable_routes_and_lazy_analytics(self):
         self.assertIn("const AnalyticsView = lazy", self.app)
@@ -32,6 +37,19 @@ class FrontendAssetSmokeTests(unittest.TestCase):
         self.assertIn("<Navigate to=\"/cases\" replace />", self.app)
         self.assertIn("preview:", self.vite)
         self.assertIn("'/api': 'http://127.0.0.1:8000'", self.vite)
+
+    def test_production_api_base_and_spa_fallback_are_configurable(self):
+        self.assertIn("VITE_API_BASE_URL", self.api)
+        self.assertIn("function apiUrl", self.api)
+        self.assertIn("apiUrl('/api/cases')", self.api)
+        self.assertIn("/* /index.html 200", self.redirects)
+        self.assertIn("X-Content-Type-Options: nosniff", self.headers)
+
+    def test_split_deployment_manifests_are_present_and_secret_free(self):
+        self.assertIn('pages_build_output_dir = "fraudlens/dashboard/dist"', self.wrangler)
+        self.assertIn("name: fraudlens-api", "\n".join(line.strip() for line in self.render.splitlines()))
+        self.assertNotIn("TG_SECRET: ", self.render)
+        self.assertIn("healthCheckPath: /health", self.render)
 
     def test_shared_data_context_deduplicates_requests(self):
         self.assertIn("const inFlightRequests = new Map()", self.data)

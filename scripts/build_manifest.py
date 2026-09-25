@@ -18,6 +18,8 @@ CODE_PATTERNS = (
     "fraudlens/pipeline/**/*.py",
     "fraudlens/gsql/*.gsql",
     "fraudlens/mcp/**/*.py",
+    "render.yaml",
+    "wrangler.toml",
     "fraudlens/dashboard/app.py",
     "fraudlens/dashboard/src/**/*",
     "fraudlens/dashboard/public/**/*",

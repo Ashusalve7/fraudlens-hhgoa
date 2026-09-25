@@ -37,6 +37,7 @@ from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -172,6 +173,17 @@ def _env_float(*names: str, default: float, maximum: float = 3600.0) -> float:
 
 
 CACHE_VERSION = "1"
+
+
+def _configured_origins() -> list[str]:
+    """Return explicitly allow-listed browser origins for a split deployment."""
+    raw = os.getenv("FRAUDLENS_ALLOWED_ORIGINS") or os.getenv("DASHBOARD_ALLOWED_ORIGINS") or ""
+    origins = []
+    for value in raw.split(","):
+        origin = value.strip().rstrip("/")
+        if len(origin) <= 256 and origin.startswith(("http://", "https://")):
+            origins.append(origin)
+    return list(dict.fromkeys(origins))[:32]
 
 
 def _cache_version() -> str:
@@ -407,6 +419,24 @@ app = FastAPI(
     description="FraudLens investigation dashboard API and production single-page application.",
     version="1.0.0",
 )
+
+_allowed_origins = _configured_origins()
+if _allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_allowed_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "HEAD", "OPTIONS"],
+        allow_headers=[
+            "Accept",
+            "Content-Type",
+            "Authorization",
+            "X-API-Key",
+            "X-API-Token",
+            "X-FraudLens-Token",
+        ],
+        max_age=600,
+    )
 
 # The Vite build emits absolute /assets URLs.  StaticFiles supplies the correct
 # content types and its own path containment checks for those files.

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-24T23:23:17.046896+00:00",
-  "git_commit": "7a5b57cc4594bc84914988dae095274abade252c",
+  "generated_at": "2026-09-25T05:53:49.952273+00:00",
+  "git_commit": "2523f91ccf72c322292e166e9d4a5a1836eafb0c",
   "files": [
     {
       "path": "HHGOA_IEEE/case_pack.csv",
@@ -150,18 +150,28 @@
     },
     {
       "path": "fraudlens/dashboard/app.py",
-      "bytes": 55809,
-      "sha256": "e40e4c975a15dcf3bc040ec778f5a81c3289a12a543cb1139b622b4d60c97066"
+      "bytes": 56791,
+      "sha256": "0748f89339790db0593b6bbfe3b3e773fc73f3ce58d68a1bb2d601b049dfe53f"
     },
     {
-      "path": "fraudlens/dashboard/dist/assets/AnalyticsView-OgOlLWzU.js",
+      "path": "fraudlens/dashboard/dist/_headers",
+      "bytes": 155,
+      "sha256": "17c3b142c0879287e6ee2170c9323a32094953821992dfa1487516892d874f56"
+    },
+    {
+      "path": "fraudlens/dashboard/dist/_redirects",
+      "bytes": 19,
+      "sha256": "6036983e5fc00f0169c9e939b1816ed771eee00e27f2fcc517b819041460b9ef"
+    },
+    {
+      "path": "fraudlens/dashboard/dist/assets/AnalyticsView-CukN0V0W.js",
       "bytes": 394034,
-      "sha256": "4ad85894099f813f67176099f77f3601c381fac1e1aec8bdc151ed91a24d11b0"
+      "sha256": "b7af03f614003c047052fa7e1a9f285a080fcd72384dbd2223e015a6b8ac1507"
     },
     {
-      "path": "fraudlens/dashboard/dist/assets/index-BvZ2kzKd.js",
-      "bytes": 255902,
-      "sha256": "1da3e7de7bd28e9dd68cd238c02893f075076a34e82e3941eb6f69345fe87933"
+      "path": "fraudlens/dashboard/dist/assets/index-BLXAV1pF.js",
+      "bytes": 255987,
+      "sha256": "bc27f2b9ab97753980cba5352d42e00269f97ccd6f78fac841a41f980ee2595f"
     },
     {
       "path": "fraudlens/dashboard/dist/assets/index-D3UTf-bT.css",
@@ -171,7 +181,7 @@
     {
       "path": "fraudlens/dashboard/dist/index.html",
       "bytes": 1137,
-      "sha256": "67813fedc97a3dd8eaffbcd1e66b93cb84c7be209382c31fbfa9aae012ab13ff"
+      "sha256": "25448260f731fb2e205aed59f270080f0648817dc6727783f41c146184f4d75b"
     },
     {
       "path": "fraudlens/dashboard/dist/robots.txt",
@@ -189,6 +199,16 @@
       "sha256": "9cac049bba51828441da34fa2bbd7adb03b7753455d9206f09a1257a14f8da56"
     },
     {
+      "path": "fraudlens/dashboard/public/_headers",
+      "bytes": 155,
+      "sha256": "17c3b142c0879287e6ee2170c9323a32094953821992dfa1487516892d874f56"
+    },
+    {
+      "path": "fraudlens/dashboard/public/_redirects",
+      "bytes": 19,
+      "sha256": "6036983e5fc00f0169c9e939b1816ed771eee00e27f2fcc517b819041460b9ef"
+    },
+    {
       "path": "fraudlens/dashboard/public/robots.txt",
       "bytes": 23,
       "sha256": "16ceb5ee3e0dc13aa9adf31a3ebbe45a1d965b8c2b9f72eaf84e5911e140ed95"
@@ -200,8 +220,8 @@
     },
     {
       "path": "fraudlens/dashboard/src/api.js",
-      "bytes": 2617,
-      "sha256": "e35ad776ebeb4cb32ebd788bb7e2ce1cda1032c24021a72f6639e3516dde7d01"
+      "bytes": 2815,
+      "sha256": "5c58850423d0e0d90d7a9296de4d81efe13eb372cf8ceaedb716af4e7bb384b3"
     },
     {
       "path": "fraudlens/dashboard/src/components/ActionsPanel.jsx",
@@ -452,6 +472,16 @@
       "path": "fraudlens/validator.py",
       "bytes": 38795,
       "sha256": "910db9b7c515c244a0a3f97026de7d5aa0882f6044ec0a028daf4a5954b0674a"
+    },
+    {
+      "path": "render.yaml",
+      "bytes": 609,
+      "sha256": "4cf51c03ef6b2e633b5828c02ca652e96a9b09fb592ebda4d7058b2d7dbc718e"
+    },
+    {
+      "path": "wrangler.toml",
+      "bytes": 111,
+      "sha256": "89383e0df98d14e64fcc7223efe428097fcdb8eecf57b36ddfe8eb6de87d1516"
     }
   ],
   "missing_expected": []

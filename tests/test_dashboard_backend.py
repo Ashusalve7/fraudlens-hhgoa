@@ -104,6 +104,20 @@ def _remote_client() -> TestClient:
     )
 
 
+def test_split_deployment_origins_are_explicit_and_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "FRAUDLENS_ALLOWED_ORIGINS",
+        "https://fraudlens-hhgoa.pages.dev, https://fraudlens.example/,",
+    )
+    assert dashboard._configured_origins() == [
+        "https://fraudlens-hhgoa.pages.dev",
+        "https://fraudlens.example",
+    ]
+    monkeypatch.delenv("FRAUDLENS_ALLOWED_ORIGINS")
+    monkeypatch.delenv("DASHBOARD_ALLOWED_ORIGINS", raising=False)
+    assert dashboard._configured_origins() == []
+
+
 def test_case_ids_are_strict_and_traversal_attempts_do_not_disclose_files(
     loopback_client: TestClient,
 ) -> None:

@@ -1,3 +1,9 @@
+const API_BASE_URL = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
+
+function apiUrl(path) {
+  return `${API_BASE_URL}${path}`
+}
+
 async function requestJson(path, unavailableMessage) {
   let response
   try {
@@ -26,19 +32,19 @@ async function requestJson(path, unavailableMessage) {
 }
 
 export async function fetchCases() {
-  const data = await requestJson('/api/cases', 'The case queue is unavailable')
+  const data = await requestJson(apiUrl('/api/cases'), 'The case queue is unavailable')
   if (!Array.isArray(data)) throw new Error('The case queue response was not a list.')
   return data
 }
 
 export async function fetchCase(id) {
-  const data = await requestJson(`/api/cases/${encodeURIComponent(id)}`, 'The case detail is unavailable')
+  const data = await requestJson(apiUrl(`/api/cases/${encodeURIComponent(id)}`), 'The case detail is unavailable')
   if (!data?.case) throw new Error('The case detail response did not include a case record.')
   return data
 }
 
 export async function fetchStats() {
-  const data = await requestJson('/api/graph/stats', 'Graph context is unavailable')
+  const data = await requestJson(apiUrl('/api/graph/stats'), 'Graph context is unavailable')
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new Error('The graph snapshot response was incomplete.')
   }
@@ -50,7 +56,7 @@ export async function fetchRing(txnId, windowDays = 45) {
     ? Math.max(1, Math.min(365, Math.trunc(Number(windowDays))))
     : 45
   const data = await requestJson(
-    `/api/graph/ring/${encodeURIComponent(txnId)}?window_days=${days}`,
+    apiUrl(`/api/graph/ring/${encodeURIComponent(txnId)}?window_days=${days}`),
     'The device neighborhood is unavailable',
   )
   if (!data || !data.device || !Array.isArray(data.cards) || !Array.isArray(data.sample)) {
@@ -61,7 +67,7 @@ export async function fetchRing(txnId, windowDays = 45) {
 
 export async function fetchExplain(caseId) {
   const data = await requestJson(
-    `/api/explain/${encodeURIComponent(caseId)}`,
+    apiUrl(`/api/explain/${encodeURIComponent(caseId)}`),
     'The score explanation is unavailable',
   )
   const probability = data?.probability

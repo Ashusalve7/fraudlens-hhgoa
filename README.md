@@ -8,6 +8,7 @@ FraudLens is an uncertainty-aware fraud-investigation workspace built for the Ha
 - [`fraudlens/README.md`](fraudlens/README.md) — setup, architecture, and final validated results.
 - [`docs/VIDEO_PRODUCTION.md`](docs/VIDEO_PRODUCTION.md) — five-minute recording runbook.
 - [`docs/VIDEO_SCRIPT_4MIN_STUDENT.md`](docs/VIDEO_SCRIPT_4MIN_STUDENT.md) — casual four-minute student presentation script.
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Cloudflare Pages + Render deployment runbook.
 - [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) — mandatory release gate.
 - [`bunny_improvement.md`](bunny_improvement.md) — original project audit and remediation record.
 
