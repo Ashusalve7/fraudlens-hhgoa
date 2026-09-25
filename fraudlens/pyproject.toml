@@ -8,7 +8,7 @@ dependencies = [
   "fastapi==0.141.1",
   "httpx==0.28.1",
   "jsonschema==4.26.0",
-  "mcp>=1.12,<2",
+  "mcp>=1.12,<3",
   "numpy==2.5.3",
   "pandas==3.0.6",
   "pyarrow==25.0.1",
